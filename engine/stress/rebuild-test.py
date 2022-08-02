@@ -75,7 +75,11 @@ def writeat_direct(dev, offset, data):
     return ret
 
 def write_data(thread, index, pattern):
-    writeat_direct("/dev/longhorn/vol%d" % (thread), index * PAGE_SIZE, str(chr(pattern))*PAGE_SIZE)
+    writeat_direct(
+        "/dev/longhorn/vol%d" % (thread),
+        index * PAGE_SIZE,
+        chr(pattern) * PAGE_SIZE,
+    )
 
 def check_data(thread, index, pattern):
     data = readat_direct("/dev/longhorn/vol%d" % (thread), index * PAGE_SIZE, PAGE_SIZE)
@@ -85,10 +89,14 @@ def check_data(thread, index, pattern):
     assert ord(data[0]) == pattern
 
 def create_snapshot(controller):
-  return subprocess.check_output(("docker exec " + controller + " longhorn snapshot create").split()).rstrip()
+    return subprocess.check_output(
+        f"docker exec {controller} longhorn snapshot create".split()
+    ).rstrip()
 
 def revert_snapshot(snap, controller):
-  subprocess.check_call(("docker exec " + controller + " longhorn snapshot revert " + snap).split())
+    subprocess.check_call(
+        f"docker exec {controller} longhorn snapshot revert {snap}".split()
+    )
 
 def wait_for_dev_ready(thread, iteration, controller):
   dev = "/dev/longhorn/vol%d" % (thread)
@@ -107,43 +115,57 @@ def wait_for_dev_ready(thread, iteration, controller):
   return
 
 def get_new_ip(thread, ip1, ip2):
-  while True:
-      # avoid controller ip
-      subnet = int(252 * random.random()) + 2
-      ip = "172.18.%s.%s" % (subnet, thread)
-      if ip != ip1 and ip != ip2:
-          break
-  return ip
+    while True:
+        # avoid controller ip
+        subnet = int(252 * random.random()) + 2
+        ip = f"172.18.{subnet}.{thread}"
+        if ip not in [ip1, ip2]:
+            break
+    return ip
 
 count = 0
 
 
 def rebuild_replica(thread, controller, replica_num, replica, rebuild_ip, remain_ip):
-  global count
-  replica_host = get_new_ip(thread, rebuild_ip, remain_ip)
-  replica_host_port = replica_host + ":9502"
-  rebuild_host_port = rebuild_ip + ":9502"
-  subprocess.call("docker kill %s" % (replica), shell=True)
-  count = count + 1
-  newreplica = subprocess.check_output(("docker run -d --name r%d-%d-%d" % (replica_num, thread, count) + \
-        " --net longhorn-net --ip %s --expose 9502-9504 -v /volume" % (replica_host) + \
-        " rancher/longhorn launch replica --listen %s --size %d /volume" \
-        % (replica_host_port, DATA_LEN)).split()).rstrip()
+    global count
+    replica_host = get_new_ip(thread, rebuild_ip, remain_ip)
+    replica_host_port = f"{replica_host}:9502"
+    rebuild_host_port = f"{rebuild_ip}:9502"
+    subprocess.call(f"docker kill {replica}", shell=True)
+    count = count + 1
+    newreplica = subprocess.check_output(
+        (
+            (
+                "docker run -d --name r%d-%d-%d" % (replica_num, thread, count)
+                + f" --net longhorn-net --ip {replica_host} --expose 9502-9504 -v /volume"
+            )
+            + " rancher/longhorn launch replica --listen %s --size %d /volume"
+            % (replica_host_port, DATA_LEN)
+        ).split()
+    ).rstrip()
 
-  print "%s: thread = %d remove old replica%d = %s ip = %s" % (datetime.datetime.now(),
-          thread, replica_num, replica, rebuild_ip)
-  subprocess.check_call(("docker exec " + controller + " longhorn rm tcp://" + rebuild_host_port).split())
 
-  print "%s: thread = %d create new replica%d = %s ip = %s" % (datetime.datetime.now(),
-          thread, replica_num, newreplica, replica_host)
-  subprocess.check_call(("docker exec " + controller + " longhorn add tcp://" + replica_host_port).split())
-  subprocess.check_call("docker rm -fv %s" % (replica), shell=True)
-  return newreplica, replica_host
+    global count
+    subprocess.check_call(
+        f"docker exec {controller} longhorn rm tcp://{rebuild_host_port}".split()
+    )
+
+
+    global count
+    subprocess.check_call(
+        f"docker exec {controller} longhorn add tcp://{replica_host_port}".split()
+    )
+
+    subprocess.check_call(f"docker rm -fv {replica}", shell=True)
+    return newreplica, replica_host
 
 
 def get_snapshot_list(controller):
-    snapshots = subprocess.check_output("docker exec " + controller +
-                " longhorn snapshots | tail -n +3", shell=True)
+    snapshots = subprocess.check_output(
+        (f"docker exec {controller}" + " longhorn snapshots | tail -n +3"),
+        shell=True,
+    )
+
     return snapshots.split()
 
 def rebuild_replicas(thread, controller, replica1, replica1_ip, replica2, replica2_ip):

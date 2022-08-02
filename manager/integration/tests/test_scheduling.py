@@ -169,7 +169,7 @@ def test_soft_anti_affinity_detach(client, volume_name):  # NOQA
     cleanup_volume(client, volume)
 
 
-def test_hard_anti_affinity_scheduling(client, volume_name):  # NOQA
+def test_hard_anti_affinity_scheduling(client, volume_name):    # NOQA
     """
     Test that volumes with Hard Anti-Affinity work as expected.
 
@@ -210,11 +210,17 @@ def test_hard_anti_affinity_scheduling(client, volume_name):  # NOQA
     # While there are three replicas that should exist to meet the Volume's
     # request, only two of those volumes should actually be Healthy.
     volume = client.by_id_volume(volume_name)
-    assert sum([1 for replica in volume.replicas if replica.running and
-                replica.mode == "RW"]) == 2
+    assert (
+        sum(
+            1
+            for replica in volume.replicas
+            if replica.running and replica.mode == "RW"
+        )
+        == 2
+    )
+
     # Confirm that the final volume is an unscheduled volume.
-    assert sum([1 for replica in volume.replicas if
-                not replica.hostId]) == 1
+    assert sum(not replica.hostId for replica in volume.replicas) == 1
     # Three replicas in total should still exist.
     assert len(volume.replicas) == 3
     check_volume_data(volume, data)
@@ -222,7 +228,7 @@ def test_hard_anti_affinity_scheduling(client, volume_name):  # NOQA
     cleanup_volume(client, volume)
 
 
-def test_hard_anti_affinity_detach(client, volume_name):  # NOQA
+def test_hard_anti_affinity_detach(client, volume_name):    # NOQA
     """
     Test that volumes with Hard Anti-Affinity are still able to detach and
     reattach to a node properly, even in degraded state.
@@ -269,10 +275,16 @@ def test_hard_anti_affinity_detach(client, volume_name):  # NOQA
     # Make sure we're still not getting another successful replica.
     volume = wait_for_volume_degraded(client, volume_name)
     wait_scheduling_failure(client, volume_name)
-    assert sum([1 for replica in volume.replicas if replica.running and
-                replica.mode == "RW"]) == 2
-    assert sum([1 for replica in volume.replicas if
-                not replica.hostId]) == 1
+    assert (
+        sum(
+            1
+            for replica in volume.replicas
+            if replica.running and replica.mode == "RW"
+        )
+        == 2
+    )
+
+    assert sum(not replica.hostId for replica in volume.replicas) == 1
     assert len(volume.replicas) == 3
     check_volume_data(volume, data)
 
@@ -688,7 +700,7 @@ def test_replica_auto_balance_node_best_effort(client, volume_name):  # NOQA
     check_volume_data(volume, data)
 
 
-def test_replica_auto_balance_disabled_volume_spec_enabled(client, volume_name):  # NOQA
+def test_replica_auto_balance_disabled_volume_spec_enabled(client, volume_name):    # NOQA
     """
     Scenario: replica should auto-balance individual volume when
               global setting `replica-auto-balance` is `disabled` and
@@ -740,8 +752,8 @@ def test_replica_auto_balance_disabled_volume_spec_enabled(client, volume_name):
     client.update(n3, allowScheduling=False)
 
     n_replicas = 3
-    v1_name = volume_name + "-1"
-    v2_name = volume_name + "-2"
+    v1_name = f"{volume_name}-1"
+    v2_name = f"{volume_name}-2"
 
     v1 = create_and_check_volume(client, v1_name,
                                  num_of_replicas=n_replicas)

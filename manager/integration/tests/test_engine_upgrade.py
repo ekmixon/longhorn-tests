@@ -319,11 +319,11 @@ def engine_live_upgrade_test(client, core_api, volume_name, backing_image=""):  
     wait_for_engine_image_ref_count(client, default_img_name, 0)
     wait_for_engine_image_ref_count(client, new_img_name, 1)
 
-    count = 0
-    # old replica may be in deletion process
-    for replica in volume.replicas:
-        if replica.currentImage == engine_upgrade_image:
-            count += 1
+    count = sum(
+        replica.currentImage == engine_upgrade_image
+        for replica in volume.replicas
+    )
+
     assert count == REPLICA_COUNT
 
     check_volume_data(volume, data)
@@ -366,11 +366,11 @@ def engine_live_upgrade_test(client, core_api, volume_name, backing_image=""):  
 
     assert volume.engineImage == original_engine_image
 
-    count = 0
-    # old replica may be in deletion process
-    for replica in volume.replicas:
-        if replica.engineImage == original_engine_image:
-            count += 1
+    count = sum(
+        replica.engineImage == original_engine_image
+        for replica in volume.replicas
+    )
+
     assert count == REPLICA_COUNT
 
     check_volume_data(volume, data)

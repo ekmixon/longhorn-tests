@@ -106,16 +106,19 @@ def create_user(admin_client, user_name, kind=None):
     if kind is None:
         kind = user_name
 
-    password = user_name + 'pass'
+    password = f'{user_name}pass'
     account = create_type_by_uuid(admin_client, 'account', user_name,
                                   kind=user_name,
                                   name=user_name)
 
-    active_cred = None
-    for cred in account.credentials():
-        if cred.kind == 'apiKey' and cred.publicValue == user_name:
-            active_cred = cred
-            break
+    active_cred = next(
+        (
+            cred
+            for cred in account.credentials()
+            if cred.kind == 'apiKey' and cred.publicValue == user_name
+        ),
+        None,
+    )
 
     if active_cred is None:
         active_cred = admin_client.create_api_key({
@@ -140,12 +143,15 @@ def client_for_project(project):
     access_key = random_str()
     secret_key = random_str()
     admin_client = _admin_client()
-    active_cred = None
     account = project
-    for cred in account.credentials():
-        if cred.kind == 'apiKey' and cred.publicValue == access_key:
-            active_cred = cred
-            break
+    active_cred = next(
+        (
+            cred
+            for cred in account.credentials()
+            if cred.kind == 'apiKey' and cred.publicValue == access_key
+        ),
+        None,
+    )
 
     if active_cred is None:
         active_cred = admin_client.create_api_key({
@@ -175,11 +181,7 @@ def create_type_by_uuid(admin_client, type, uuid, activate=True, validate=True,
 
     objs = admin_client.list(type, uuid=uuid)
     obj = None
-    if len(objs) == 0:
-        obj = admin_client.create(type, **opts)
-    else:
-        obj = objs[0]
-
+    obj = admin_client.create(type, **opts) if len(objs) == 0 else objs[0]
     obj = wait_success(admin_client, obj)
     if activate and obj.state == 'inactive':
         obj.activate()
@@ -194,13 +196,21 @@ def create_type_by_uuid(admin_client, type, uuid, activate=True, validate=True,
 
 @pytest.fixture(scope='session')
 def accounts():
-    result = {}
     admin_client = _admin_client()
-    for user_name in ['admin', 'agent', 'user', 'agentRegister', 'test',
-                      'readAdmin', 'token', 'superadmin', 'service']:
-        result[user_name] = create_user(admin_client,
-                                        user_name,
-                                        kind=user_name)
+    result = {
+        user_name: create_user(admin_client, user_name, kind=user_name)
+        for user_name in [
+            'admin',
+            'agent',
+            'user',
+            'agentRegister',
+            'test',
+            'readAdmin',
+            'token',
+            'superadmin',
+            'service',
+        ]
+    }
 
     result['admin'] = create_user(admin_client, 'admin')
     system_account = admin_client.list_account(kind='system', uuid='system')[0]
@@ -226,8 +236,7 @@ def admin_client():
 
 @pytest.fixture(scope='session')
 def super_client(accounts):
-    ret = _client_for_user('superadmin', accounts)
-    return ret
+    return _client_for_user('superadmin', accounts)
 
 
 @pytest.fixture
@@ -310,10 +319,7 @@ def delete_all(client, items):
 
 def delete_by_id(self, type, id):
     url = self.schema.types[type].links.collection
-    if url.endswith('/'):
-        url = url + id
-    else:
-        url = '/'.join([url, id])
+    url = url + id if url.endswith('/') else '/'.join([url, id])
     return self._delete(url)
 
 
@@ -321,20 +327,16 @@ def get_port_content(port, path, params={}):
     assert port.publicPort is not None
     assert port.publicIpAddressId is not None
 
-    url = 'http://{}:{}/{}'.format(port.publicIpAddress().address,
-                                   port.publicPort,
-                                   path)
+    url = f'http://{port.publicIpAddress().address}:{port.publicPort}/{path}'
 
     e = None
-    for i in range(60):
+    for _ in range(60):
         try:
             return requests.get(url, params=params, timeout=5).text
         except Exception as e1:
             e = e1
             logger.exception('Failed to call %s', url)
             time.sleep(1)
-            pass
-
     if e is not None:
         raise e
 
@@ -354,16 +356,19 @@ def ping_link(src, link_name, var=None, value=None):
     assert len(links[0].ports) == 1
     assert links[0].linkName == link_name
 
-    for i in range(3):
-        from_link = get_port_content(src_port, 'get', params={
-            'link': link_name,
-            'path': 'env?var=' + var,
-            'port': links[0].ports[0].privatePort
-        })
+    for _ in range(3):
+        from_link = get_port_content(
+            src_port,
+            'get',
+            params={
+                'link': link_name,
+                'path': f'env?var={var}',
+                'port': links[0].ports[0].privatePort,
+            },
+        )
 
-        if from_link == value:
-            continue
-        else:
+
+        if from_link != value:
             time.sleep(1)
 
     assert from_link == value
@@ -395,14 +400,16 @@ def host_ssh_containers(request, client):
         docker_vol_value = ["/usr/bin/docker:/usr/bin/docker",
                             "/var/run/docker.sock:/var/run/docker.sock"
                             ]
-        c = client.create_container(name="host_ssh_container",
-                                    networkMode=MANAGED_NETWORK,
-                                    imageUuid=SSH_HOST_IMAGE_UUID,
-                                    requestedHostId=host.id,
-                                    dataVolumes=docker_vol_value,
-                                    environment=env_var,
-                                    ports=[str(HOST_SSH_PUBLIC_PORT)+":22"]
-                                    )
+        c = client.create_container(
+            name="host_ssh_container",
+            networkMode=MANAGED_NETWORK,
+            imageUuid=SSH_HOST_IMAGE_UUID,
+            requestedHostId=host.id,
+            dataVolumes=docker_vol_value,
+            environment=env_var,
+            ports=[f"{str(HOST_SSH_PUBLIC_PORT)}:22"],
+        )
+
         ssh_containers.append(c)
 
     for c in ssh_containers:
@@ -413,7 +420,7 @@ def host_ssh_containers(request, client):
 
         for c in ssh_containers:
             client.delete(c)
-        os.system("rm " + PRIVATE_KEY_FILENAME)
+        os.system(f"rm {PRIVATE_KEY_FILENAME}")
 
     request.addfinalizer(fin)
 
@@ -436,9 +443,11 @@ def wait_for_condition(client, resource, check_function, fail_handler=None,
     resource = client.reload(resource)
     while not check_function(resource):
         if time.time() - start > timeout:
-            exceptionMsg = 'Timeout waiting for ' + resource.kind + \
-                ' to satisfy condition: ' + \
-                inspect.getsource(check_function)
+            exceptionMsg = (
+                f'Timeout waiting for {resource.kind}'
+                + ' to satisfy condition: '
+            ) + inspect.getsource(check_function)
+
             if (fail_handler):
                 exceptionMsg = exceptionMsg + fail_handler(resource)
             raise Exception(exceptionMsg)
@@ -465,16 +474,16 @@ def wait_for(callback, timeout=DEFAULT_TIMEOUT, timeout_message=None):
 
 def deploy_longhorn(client, super_client):
 
-    catalog_url = cattle_url() + "/v1-catalog/templates/longhorn:"
+    catalog_url = f"{cattle_url()}/v1-catalog/templates/longhorn:"
 
     env = client.list_environment(name="longhorn")
     # If convoy-longhorn environment exists do nothing
     if len(env) == 1:
         return
 
-    # Deploy longhorn template from catalog
-    print catalog_url + "longhorn:0"
-    r = requests.get(catalog_url + "longhorn:0")
+    catalog_url = cattle_url() + "/v1-catalog/templates/longhorn:"
+
+    r = requests.get(f"{catalog_url}longhorn:0")
     template = json.loads(r.content)
     r.close()
 
@@ -491,10 +500,13 @@ def deploy_longhorn(client, super_client):
 
     for service in env.services():
         wait_for_condition(
-            super_client, service,
+            super_client,
+            service,
             lambda x: x.state == "active",
-            lambda x: 'State is: ' + x.state,
-            timeout=600)
+            lambda x: f'State is: {x.state}',
+            timeout=600,
+        )
+
 
     # wait for storage pool to be created
     storagepools = client.list_storage_pool(removed_null=True,
@@ -515,10 +527,10 @@ def deploy_longhorn(client, super_client):
 
 @pytest.fixture(scope='session')
 def glusterfs_glusterconvoy(client, super_client, request):
-    catalog_url = cattle_url() + "/v1-catalog/templates/library:"
+    catalog_url = f"{cattle_url()}/v1-catalog/templates/library:"
 
     # Deploy GlusterFS template from catalog
-    r = requests.get(catalog_url + "glusterfs:0")
+    r = requests.get(f"{catalog_url}glusterfs:0")
     template = json.loads(r.content)
     r.close()
 
@@ -541,21 +553,25 @@ def glusterfs_glusterconvoy(client, super_client, request):
 
     for service in env.services():
         wait_for_condition(
-            super_client, service,
+            super_client,
+            service,
             lambda x: x.state == "active",
-            lambda x: 'State is: ' + x.state,
-            timeout=600)
+            lambda x: f'State is: {x.state}',
+            timeout=600,
+        )
+
 
     # Deploy ConvoyGluster template from catalog
 
-    r = requests.get(catalog_url + "convoy-gluster:1")
+    r = requests.get(f"{catalog_url}convoy-gluster:1")
     template = json.loads(r.content)
     r.close()
     dockerCompose = template["dockerCompose"]
     rancherCompose = template["rancherCompose"]
     environment = {}
     questions = template["questions"]
-    print questions
+    catalog_url = cattle_url() + "/v1-catalog/templates/library:"
+
     for question in questions:
         label = question["variable"]
         value = question["default"]
@@ -570,16 +586,20 @@ def glusterfs_glusterconvoy(client, super_client, request):
 
     for service in env.services():
         wait_for_condition(
-            super_client, service,
+            super_client,
+            service,
             lambda x: x.state == "active",
-            lambda x: 'State is: ' + x.state,
-            timeout=600)
+            lambda x: f'State is: {x.state}',
+            timeout=600,
+        )
+
 
     # Verify that storage pool is created
     storagepools = client.list_storage_pool(removed_null=True,
                                             include="hosts",
                                             kind="storagePool")
-    print storagepools
+    catalog_url = cattle_url() + "/v1-catalog/templates/library:"
+
     assert len(storagepools) == 1
 
     def remove():
@@ -588,6 +608,7 @@ def glusterfs_glusterconvoy(client, super_client, request):
         env2 = client.list_environment(name="convoy-gluster")
         assert len(env2) == 1
         delete_all(client, [env1[0], env2[0]])
+
     request.addfinalizer(remove)
 
 
@@ -603,7 +624,7 @@ def socat_containers(client, request):
 
     for host in hosts:
         socat_container = client.create_container(
-            name='socat-%s' % random_str(),
+            name=f'socat-{random_str()}',
             networkMode=MANAGED_NETWORK,
             imageUuid=SOCAT_IMAGE_UUID,
             ports='2375:2375/tcp',
@@ -613,37 +634,48 @@ def socat_containers(client, request):
             privileged=True,
             dataVolumes='/var/run/docker.sock:/var/run/docker.sock',
             requestedHostId=host.id,
-            pidMode="host")
+            pidMode="host",
+        )
+
         socat_container_list.append(socat_container)
 
     for socat_container in socat_container_list:
         wait_for_condition(
-            client, socat_container,
+            client,
+            socat_container,
             lambda x: x.state == 'running',
-            lambda x: 'State is: ' + x.state)
+            lambda x: f'State is: {x.state}',
+        )
+
     time.sleep(10)
 
     for host in hosts:
         host_container = client.create_container(
-            name='host-%s' % random_str(),
+            name=f'host-{random_str()}',
             networkMode="host",
             imageUuid=HOST_ACCESS_IMAGE_UUID,
             privileged=True,
             pidMode="host",
-            requestedHostId=host.id)
+            requestedHostId=host.id,
+        )
+
         host_container_list.append(host_container)
 
     for host_container in host_container_list:
         wait_for_condition(
-            client, host_container,
+            client,
+            host_container,
             lambda x: x.state in ('running', 'stopped'),
-            lambda x: 'State is: ' + x.state)
+            lambda x: f'State is: {x.state}',
+        )
+
 
     time.sleep(10)
 
     def remove_socat():
         delete_all(client, socat_container_list)
         delete_all(client, host_container_list)
+
     request.addfinalizer(remove_socat)
 
 
@@ -651,8 +683,7 @@ def get_docker_client(host):
     ip = host.ipAddresses()[0].address
     port = '2375'
 
-    params = {}
-    params['base_url'] = 'tcp://%s:%s' % (ip, port)
+    params = {'base_url': f'tcp://{ip}:{port}'}
     api_version = os.getenv('DOCKER_API_VERSION', '1.18')
     params['version'] = api_version
 
@@ -677,9 +708,11 @@ def wait_for_scale_to_adjust(super_client, service, timeout=600):
     for instance_map in instance_maps:
         c = super_client.by_id('container', instance_map.instanceId)
         wait_for_condition(
-            super_client, c,
+            super_client,
+            c,
             lambda x: x.state == "running",
-            lambda x: 'State is: ' + x.state)
+            lambda x: f'State is: {x.state}',
+        )
 
 
 def wait_for_vm_scale_to_adjust(super_client, service, timeout=600):
@@ -700,9 +733,11 @@ def wait_for_vm_scale_to_adjust(super_client, service, timeout=600):
     for instance_map in instance_maps:
         c = super_client.by_id('virtualMachine', instance_map.instanceId)
         wait_for_condition(
-            super_client, c,
+            super_client,
+            c,
             lambda x: x.state == "running",
-            lambda x: 'State is: ' + x.state)
+            lambda x: f'State is: {x.state}',
+        )
 
 
 def check_service_map(super_client, service, instance, state):
@@ -716,9 +751,10 @@ def get_container_names_list(super_client, services):
     container_names = []
     for service in services:
         containers = get_service_container_list(super_client, service)
-        for c in containers:
-            if c.state == "running":
-                container_names.append(c.externalId[:12])
+        container_names.extend(
+            c.externalId[:12] for c in containers if c.state == "running"
+        )
+
     return container_names
 
 
@@ -729,9 +765,11 @@ def validate_add_service_link(super_client, service, consumedService):
     assert len(service_maps) == 1
     service_map = service_maps[0]
     wait_for_condition(
-        super_client, service_map,
+        super_client,
+        service_map,
         lambda x: x.state == "active",
-        lambda x: 'State is: ' + x.state)
+        lambda x: f'State is: {x.state}',
+    )
 
 
 def validate_remove_service_link(super_client, service, consumedService):
@@ -741,9 +779,11 @@ def validate_remove_service_link(super_client, service, consumedService):
     assert len(service_maps) == 1
     service_map = service_maps[0]
     wait_for_condition(
-        super_client, service_map,
+        super_client,
+        service_map,
         lambda x: x.state == "removed",
-        lambda x: 'State is: ' + x.state)
+        lambda x: f'State is: {x.state}',
+    )
 
 
 def get_service_container_list(super_client, service, managed=None):
@@ -757,10 +797,11 @@ def get_service_container_list(super_client, service, managed=None):
         all_instance_maps = \
             super_client.list_serviceExposeMap(serviceId=service.id)
 
-    instance_maps = []
-    for instance_map in all_instance_maps:
-        if instance_map.state not in ("removed", "removing"):
-            instance_maps.append(instance_map)
+    instance_maps = [
+        instance_map
+        for instance_map in all_instance_maps
+        if instance_map.state not in ("removed", "removing")
+    ]
 
     for instance_map in instance_maps:
         c = super_client.by_id('container', instance_map.instanceId)
@@ -785,10 +826,11 @@ def get_service_vm_list(super_client, service, managed=None):
         all_instance_maps = \
             super_client.list_serviceExposeMap(serviceId=service.id)
 
-    instance_maps = []
-    for instance_map in all_instance_maps:
-        if instance_map.state not in ("removed", "removing"):
-            instance_maps.append(instance_map)
+    instance_maps = [
+        instance_map
+        for instance_map in all_instance_maps
+        if instance_map.state not in ("removed", "removing")
+    ]
 
     for instance_map in instance_maps:
         c = super_client.by_id('virtualMachine', instance_map.instanceId)
@@ -857,8 +899,8 @@ def validate_exposed_port_and_container_link(super_client, con, link_name,
     address = None
     port = None
 
-    env_name_link_address = link_name + "_PORT_" + str(link_port) + "_TCP_ADDR"
-    env_name_link_name = link_name + "_PORT_" + str(link_port) + "_TCP_PORT"
+    env_name_link_address = f"{link_name}_PORT_{str(link_port)}_TCP_ADDR"
+    env_name_link_name = f"{link_name}_PORT_{str(link_port)}_TCP_PORT"
 
     for env_var in response:
         if env_name_link_address in env_var:
@@ -923,9 +965,7 @@ def wait_for_lb_service_to_become_active(super_client, client,
 def validate_lb_service_for_external_services(super_client, client, lb_service,
                                               port, container_list,
                                               hostheader=None, path=None):
-    container_names = []
-    for con in container_list:
-        container_names.append(con.externalId[:12])
+    container_names = [con.externalId[:12] for con in container_list]
     validate_lb_service_con_names(super_client, client, lb_service, port,
                                   container_names, hostheader, path)
 
@@ -1009,16 +1049,13 @@ def wait_until_lb_is_active(host, port, timeout=30, is_ssl=False):
 
 
 def check_for_no_access(host, port, is_ssl=False):
-    if is_ssl:
-        protocol = "https://"
-    else:
-        protocol = "http://"
+    protocol = "https://" if is_ssl else "http://"
     try:
         url = protocol+host.ipAddresses()[0].address+":"+port+"/name.html"
         requests.get(url)
         return False
     except requests.ConnectionError:
-        logger.info("Connection Error - " + url)
+        logger.info(f"Connection Error - {url}")
         return True
 
 

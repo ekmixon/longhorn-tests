@@ -209,12 +209,16 @@ def test_createVM_rootdisk_replica_delete(super_client, client):
         get_env_service_by_name(client, env_name, CONTROLLER)
     assert con_service.scale == 1
     controller = get_service_containers_with_name(
-            super_client, con_service, env_name+"_"+CONTROLLER)
+        super_client, con_service, f"{env_name}_{CONTROLLER}"
+    )
+
     assert len(controller) == 1
 
-    for i in range(0, 2):
+    for _ in range(2):
         replica_containers = get_service_containers_with_name(
-            super_client, service, env_name+"_"+REPLICA)
+            super_client, service, f"{env_name}_{REPLICA}"
+        )
+
         assert len(replica_containers) == service.scale
         for con in replica_containers:
             # Delete one of the replicas of the container of the service
@@ -222,7 +226,9 @@ def test_createVM_rootdisk_replica_delete(super_client, client):
                 super_client, client, service, [con])
             validate_writes(vm_host, port, is_root=True)
             new_replica_containers = get_service_containers_with_name(
-                super_client, service, env_name+"_"+REPLICA)
+                super_client, service, f"{env_name}_{REPLICA}"
+            )
+
             assert len(new_replica_containers) == service.scale
             # wait for replica to get to RW mode
             wait_for_replica_rebuild(controller[0], new_replica_containers)
@@ -245,12 +251,16 @@ def test_createVM_datadisk_replica_delete(super_client, client):
         get_env_service_by_name(client, env_name, CONTROLLER)
     assert con_service.scale == 1
     controller = get_service_containers_with_name(
-        super_client, con_service, env_name+"_"+CONTROLLER)
+        super_client, con_service, f"{env_name}_{CONTROLLER}"
+    )
+
     assert len(controller) == 1
 
-    for i in range(0, 2):
+    for _ in range(2):
         replica_containers = get_service_containers_with_name(
-            super_client, service, env_name+"_"+REPLICA)
+            super_client, service, f"{env_name}_{REPLICA}"
+        )
+
         assert len(replica_containers) == service.scale
         for con in replica_containers:
             # Delete one of the replicas of the container of the service
@@ -258,7 +268,9 @@ def test_createVM_datadisk_replica_delete(super_client, client):
                 super_client, client, service, [con])
             validate_writes(vm_host, port, is_root=False)
             new_replica_containers = get_service_containers_with_name(
-                super_client, service, env_name+"_"+REPLICA)
+                super_client, service, f"{env_name}_{REPLICA}"
+            )
+
             assert len(new_replica_containers) == service.scale
             # wait for replica to get to RW mode
             wait_for_replica_rebuild(controller[0], new_replica_containers)

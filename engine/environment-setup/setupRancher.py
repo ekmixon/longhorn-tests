@@ -42,8 +42,11 @@ def gce_create_instance(compute, name, gce_startup_script):
     source_disk_image = image_response['selfLink']
 
     # Configure the machine
-    machine_type = "zones/%s/machineTypes/" % common.gce_rancher_project_zone \
+    machine_type = (
+        f"zones/{common.gce_rancher_project_zone}/machineTypes/"
         + gce_rancher_machine_type
+    )
+
     log.info("startup_script: %s", gce_startup_script)
 
     config = {
@@ -104,9 +107,7 @@ def gce_get_IP(compute, name):
         instance=name)
     vm = request.execute()
 
-    # get the external IP
-    IP = vm['networkInterfaces'][0]['accessConfigs'][0]['natIP']
-    return IP
+    return vm['networkInterfaces'][0]['accessConfigs'][0]['natIP']
 
 
 def packet_wait_for_creation(manager, device):
@@ -124,7 +125,7 @@ def packet_wait_for_creation(manager, device):
 
 def cattle_get_host_registration_command(IP):
     # formulate a request for cattle API to get the host registration cmd
-    url = "http://" + IP + ":8080/v1/projects/1a5/registrationtokens"
+    url = f"http://{IP}:8080/v1/projects/1a5/registrationtokens"
     log.info("ip: %s, url: %s", IP, url)
 
     # first do a post to create a registration resource, with empty data body
@@ -196,8 +197,9 @@ def packet_register_to_cattle(device, registration_command):
                 device.hostname)
             if retries == -1:
                 raise Exception(
-                    "Cannot register packet host name: %s to cattle" %
-                    device.hostname)
+                    f"Cannot register packet host name: {device.hostname} to cattle"
+                )
+
             log.info(
                 "retrying to register packet host name: %s using \
                 registration_command: %s",
@@ -301,14 +303,13 @@ def main():
     # set test required environment variable to a property file
     property_file_name = os.environ["PROPERTY_FILE_NAME"]
 
-    property_file = open(
+    with open(
         os.path.join(
             os.path.dirname(__file__),
             property_file_name),
-        'w')
-    property_file.write("CATTLE_TEST_URL=http://" + rancher_IP + ":8080\n")
-    property_file.write("LONGHORN_BACKUP_SERVER_IP=" + nfs_IP + "\n")
-    property_file.close()
+        'w') as property_file:
+        property_file.write(f"CATTLE_TEST_URL=http://{rancher_IP}" + ":8080\n")
+        property_file.write(f"LONGHORN_BACKUP_SERVER_IP={nfs_IP}" + "\n")
 
 
 if __name__ == '__main__':

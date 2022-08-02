@@ -63,7 +63,7 @@ class aws(cloudprovider):
                 aws.ec2_client.stop_instances(InstanceIds=[instance_id])
 
             action_ok = False
-            for i in range(self.ACTION_WAIT_TIMEOUT_SEC):
+            for _ in range(self.ACTION_WAIT_TIMEOUT_SEC):
                 instance_status = self.instance_status(instance_id)
                 if instance_status == desired_status:
                     action_ok = True

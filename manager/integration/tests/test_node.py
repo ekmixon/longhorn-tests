@@ -156,11 +156,9 @@ def create_host_disk(client, vol_name, size, node_id):  # NOQA
     mkfs_ext4_settings = client.by_id_setting(SETTING_MKFS_EXT4_PARAMS)
     mkfs_ext4_options = mkfs_ext4_settings.value
 
-    # prepare the disk in the host filesystem
-    disk_path = common.prepare_host_disk(get_volume_endpoint(volume),
-                                         volume.name,
-                                         mkfs_ext4_options)
-    return disk_path
+    return common.prepare_host_disk(
+        get_volume_endpoint(volume), volume.name, mkfs_ext4_options
+    )
 
 
 def cleanup_host_disk(client, *args):  # NOQA
@@ -208,7 +206,7 @@ def test_update_node(client):  # NOQA
 @pytest.mark.coretest   # NOQA
 @pytest.mark.node  # NOQA
 @pytest.mark.mountdisk # NOQA
-def test_node_disk_update(client):  # NOQA
+def test_node_disk_update(client):    # NOQA
     """
     Test update node disks
 
@@ -261,14 +259,14 @@ def test_node_disk_update(client):  # NOQA
     update_disk = get_update_disks(disks)
     for disk in update_disk.values():
         # keep default disk for other tests
-        if disk.path == disk_path1 or disk.path == disk_path2:
+        if disk.path in [disk_path1, disk_path2]:
             disk.allowScheduling = False
             disk.storageReserved = SMALL_DISK_SIZE
     node = node.diskUpdate(disks=update_disk)
     disks = node.disks
     # wait for node controller to update disk status
     for name, disk in iter(disks.items()):
-        if disk.path == disk_path1 or disk.path == disk_path2:
+        if disk.path in [disk_path1, disk_path2]:
             wait_for_disk_status(client, lht_hostId, name,
                                  "allowScheduling", False)
             wait_for_disk_status(client, lht_hostId, name,
@@ -296,10 +294,12 @@ def test_node_disk_update(client):  # NOQA
 
     # delete other disks, just remain default disk
     update_disk = get_update_disks(disks)
-    remain_disk = {}
-    for name, disk in update_disk.items():
-        if disk.path != disk_path1 and disk.path != disk_path2:
-            remain_disk[name] = disk
+    remain_disk = {
+        name: disk
+        for name, disk in update_disk.items()
+        if disk.path not in [disk_path1, disk_path2]
+    }
+
     node = node.diskUpdate(disks=remain_disk)
     node = wait_for_disk_update(client, lht_hostId,
                                 len(remain_disk))
@@ -543,7 +543,7 @@ def test_replica_scheduler_large_volume_fit_small_disk(client):  # NOQA
 
 
 @pytest.mark.node  # NOQA
-def test_replica_scheduler_too_large_volume_fit_any_disks(client):  # NOQA
+def test_replica_scheduler_too_large_volume_fit_any_disks(client):    # NOQA
     """
     Test replica scheduler: volume is too large to fit any disks
 
@@ -610,9 +610,7 @@ def test_replica_scheduler_too_large_volume_fit_any_disks(client):  # NOQA
     volume.attach(hostId=lht_hostId)
     volume = common.wait_for_volume_healthy(client, vol_name)
     nodes = client.list_node()
-    node_hosts = []
-    for node in nodes:
-        node_hosts.append(node.name)
+    node_hosts = [node.name for node in nodes]
     # check all replica should be scheduled to default disk
     for replica in volume.replicas:
         id = replica.hostId
@@ -629,7 +627,7 @@ def test_replica_scheduler_too_large_volume_fit_any_disks(client):  # NOQA
 
 
 @pytest.mark.node  # NOQA
-def test_replica_scheduler_update_over_provisioning(client):  # NOQA
+def test_replica_scheduler_update_over_provisioning(client):    # NOQA
     """
     Test replica scheduler: update overprovisioning setting
 
@@ -680,9 +678,7 @@ def test_replica_scheduler_update_over_provisioning(client):  # NOQA
     volume.attach(hostId=lht_hostId)
     volume = common.wait_for_volume_healthy(client, vol_name)
 
-    node_hosts = []
-    for node in nodes:
-        node_hosts.append(node.name)
+    node_hosts = [node.name for node in nodes]
     # check all replica should be scheduled to default disk
     for replica in volume.replicas:
         id = replica.hostId
@@ -745,7 +741,7 @@ def test_replica_scheduler_exceed_over_provisioning(client):  # NOQA
 
 
 @pytest.mark.node  # NOQA
-def test_replica_scheduler_just_under_over_provisioning(client):  # NOQA
+def test_replica_scheduler_just_under_over_provisioning(client):    # NOQA
     """
     Test replica scheduler: just under overprovisioning parameter
 
@@ -772,7 +768,7 @@ def test_replica_scheduler_just_under_over_provisioning(client):  # NOQA
             if disk.path == DEFAULT_DISK_PATH:
                 expect_disk = disk
                 expect_node_disk[node.name] = expect_disk
-                max_size_array.append(disk.storageMaximum)
+                max_size_array.append(expect_disk.storageMaximum)
             disk.storageReserved = 0
             update_disks = get_update_disks(disks)
             node = node.diskUpdate(disks=update_disks)
@@ -798,9 +794,7 @@ def test_replica_scheduler_just_under_over_provisioning(client):  # NOQA
     volume.attach(hostId=lht_hostId)
     volume = common.wait_for_volume_healthy(client, vol_name)
     nodes = client.list_node()
-    node_hosts = []
-    for node in nodes:
-        node_hosts.append(node.name)
+    node_hosts = [node.name for node in nodes]
     # check all replica should be scheduled to default disk
     for replica in volume.replicas:
         id = replica.hostId
@@ -818,7 +812,7 @@ def test_replica_scheduler_just_under_over_provisioning(client):  # NOQA
 
 
 @pytest.mark.node  # NOQA
-def test_replica_scheduler_update_minimal_available(client):  # NOQA
+def test_replica_scheduler_update_minimal_available(client):    # NOQA
     """
     Test replica scheduler: update setting `minimal available`
 
@@ -887,9 +881,7 @@ def test_replica_scheduler_update_minimal_available(client):  # NOQA
     volume.attach(hostId=lht_hostId)
     volume = common.wait_for_volume_healthy(client, vol_name)
     nodes = client.list_node()
-    node_hosts = []
-    for node in nodes:
-        node_hosts.append(node.name)
+    node_hosts = [node.name for node in nodes]
     # check all replica should be scheduled to default disk
     for replica in volume.replicas:
         id = replica.hostId
@@ -964,7 +956,7 @@ def test_node_controller_sync_storage_scheduled(client):  # NOQA
 @pytest.mark.coretest   # NOQA
 @pytest.mark.node  # NOQA
 @pytest.mark.mountdisk  # NOQA
-def test_node_controller_sync_storage_available(client):  # NOQA
+def test_node_controller_sync_storage_available(client):    # NOQA
     """
     Test node controller sync storage available correctly
 
@@ -987,7 +979,7 @@ def test_node_controller_sync_storage_available(client):  # NOQA
     test_file_path = os.path.join(test_disk_path, TEST_FILE)
     if os.path.exists(test_file_path):
         os.remove(test_file_path)
-    cmd = ['dd', 'if=/dev/zero', 'of=' + test_file_path, 'bs=1M', 'count=1']
+    cmd = ['dd', 'if=/dev/zero', f'of={test_file_path}', 'bs=1M', 'count=1']
     subprocess.check_call(cmd)
     subprocess.check_call(['sync', test_file_path])
     node = client.by_id_node(lht_hostId)
@@ -1078,7 +1070,7 @@ def test_node_controller_sync_disk_state(client):  # NOQA
 
 @pytest.mark.node  # NOQA
 @pytest.mark.mountdisk # NOQA
-def test_node_default_disk_added_back_with_extra_disk_unmounted(client):  # NOQA
+def test_node_default_disk_added_back_with_extra_disk_unmounted(client):    # NOQA
     """
     [Node] Test adding default disk back with extra disk is unmounted
     on the node
@@ -1140,10 +1132,12 @@ def test_node_default_disk_added_back_with_extra_disk_unmounted(client):  # NOQA
     node = node.diskUpdate(disks=update_disk)
     node = common.wait_for_disk_update(client, lht_hostId,
                                        len(update_disk))
-    remain_disk = {}
-    for name, disk in node.disks.items():
-        if disk.path == extra_disk_path:
-            remain_disk[name] = disk
+    remain_disk = {
+        name: disk
+        for name, disk in node.disks.items()
+        if disk.path == extra_disk_path
+    }
+
     node = node.diskUpdate(disks=remain_disk)
     node = wait_for_disk_update(client, lht_hostId,
                                 len(remain_disk))
@@ -1192,10 +1186,12 @@ def test_node_default_disk_added_back_with_extra_disk_unmounted(client):  # NOQA
                                        len(update_disk))
 
     update_disk = get_update_disks(node.disks)
-    remain_disk = {}
-    for name, disk in update_disk.items():
-        if disk.path != extra_disk_path:
-            remain_disk[name] = disk
+    remain_disk = {
+        name: disk
+        for name, disk in update_disk.items()
+        if disk.path != extra_disk_path
+    }
+
     node = node.diskUpdate(disks=remain_disk)
     node = wait_for_disk_update(client, lht_hostId,
                                 len(remain_disk))
@@ -1205,7 +1201,7 @@ def test_node_default_disk_added_back_with_extra_disk_unmounted(client):  # NOQA
 
 @pytest.mark.node  # NOQA
 @pytest.mark.mountdisk  # NOQA
-def test_node_umount_disk(client):  # NOQA
+def test_node_umount_disk(client):    # NOQA
     """
     [Node] Test umount and delete the extra disk on the node
 
@@ -1321,19 +1317,18 @@ def test_node_umount_disk(client):  # NOQA
     disks = node.disks
     update_disks = {}
     for fsid, disk in iter(disks.items()):
+        conditions = disk.conditions
         if disk.path == disk_path1:
             assert disk.allowScheduling
             assert disk.storageMaximum == 0
             assert disk.storageAvailable == 0
             assert disk.storageReserved == SMALL_DISK_SIZE
             assert disk.storageScheduled == 0
-            conditions = disk.conditions
             assert conditions[DISK_CONDITION_READY]["status"] == \
                 CONDITION_STATUS_FALSE
             assert conditions[DISK_CONDITION_SCHEDULABLE]["status"] == \
                 CONDITION_STATUS_FALSE
         else:
-            conditions = disk.conditions
             assert conditions[DISK_CONDITION_READY]["status"] == \
                 CONDITION_STATUS_TRUE
             assert conditions[DISK_CONDITION_SCHEDULABLE]["status"] == \
@@ -1348,10 +1343,7 @@ def test_node_umount_disk(client):  # NOQA
     # update other disks
     disks = node.disks
     for fsid, disk in iter(disks.items()):
-        if disk.path == disk_path1:
-            disk.allowScheduling = False
-        else:
-            disk.allowScheduling = True
+        disk.allowScheduling = disk.path != disk_path1
     test_update = get_update_disks(disks)
     node = node.diskUpdate(disks=test_update)
     disks = node.disks
@@ -1386,6 +1378,7 @@ def test_node_umount_disk(client):  # NOQA
     node = client.by_id_node(lht_hostId)
     disks = node.disks
     for fsid, disk in iter(disks.items()):
+        conditions = disk.conditions
         if disk.path == disk_path1:
             free, total = common.get_host_disk_size(disk_path1)
             assert not disk.allowScheduling
@@ -1393,18 +1386,10 @@ def test_node_umount_disk(client):  # NOQA
             assert disk.storageAvailable == free
             assert disk.storageReserved == SMALL_DISK_SIZE
             assert disk.storageScheduled == SMALL_DISK_SIZE
-            conditions = disk.conditions
-            assert conditions[DISK_CONDITION_READY]["status"] == \
-                CONDITION_STATUS_TRUE
-            assert conditions[DISK_CONDITION_SCHEDULABLE]["status"] == \
-                CONDITION_STATUS_TRUE
-        else:
-            conditions = disk.conditions
-            assert conditions[DISK_CONDITION_READY]["status"] == \
-                CONDITION_STATUS_TRUE
-            assert conditions[DISK_CONDITION_SCHEDULABLE]["status"] == \
-                CONDITION_STATUS_TRUE
-
+        assert conditions[DISK_CONDITION_SCHEDULABLE]["status"] == \
+            CONDITION_STATUS_TRUE
+        assert conditions[DISK_CONDITION_READY]["status"] == \
+            CONDITION_STATUS_TRUE
     # delete volume and umount disk
     cleanup_volume(client, vol_name)
     mount_path = os.path.join(DIRECTORY_PATH, disk_volume_name)
@@ -1435,7 +1420,7 @@ def test_node_umount_disk(client):  # NOQA
 @pytest.mark.coretest   # NOQA
 @pytest.mark.node  # NOQA
 @pytest.mark.mountdisk # NOQA
-def test_replica_datapath_cleanup(client):  # NOQA
+def test_replica_datapath_cleanup(client):    # NOQA
     """
     Test replicas data path cleanup
 
@@ -1470,11 +1455,14 @@ def test_replica_datapath_cleanup(client):  # NOQA
                                        len(update_disks))
     assert len(node.disks) == len(update_disks)
 
-    extra_disk_fsid = ""
-    for fsid, disk in iter(node.disks.items()):
-        if disk.path == extra_disk_path:
-            extra_disk_fsid = fsid
-            break
+    extra_disk_fsid = next(
+        (
+            fsid
+            for fsid, disk in iter(node.disks.items())
+            if disk.path == extra_disk_path
+        ),
+        "",
+    )
 
     for node in nodes:
         # disable all the disks except the ones on the current node
@@ -1492,20 +1480,17 @@ def test_replica_datapath_cleanup(client):  # NOQA
     vol_name = common.generate_volume_name()
     # more replicas, make sure both default and extra disk will get one
     volume = create_volume(client, vol_name, str(Gi), lht_hostId, 5)
-    data_paths = []
-    for replica in volume.replicas:
-        data_paths.append(replica.dataPath)
-
+    data_paths = [replica.dataPath for replica in volume.replicas]
     # data path should exist now
     for data_path in data_paths:
-        assert exec_nsenter("ls {}".format(data_path))
+        assert exec_nsenter(f"ls {data_path}")
 
     cleanup_volume(client, vol_name)
 
     # data path should be gone due to the cleanup of replica
     for data_path in data_paths:
         with pytest.raises(subprocess.CalledProcessError):
-            exec_nsenter("ls {}".format(data_path))
+            exec_nsenter(f"ls {data_path}")
 
     node = client.by_id_node(lht_hostId)
     disks = node.disks
@@ -1532,7 +1517,7 @@ def test_replica_datapath_cleanup(client):  # NOQA
 
 
 @pytest.mark.node  # NOQA
-def test_node_default_disk_labeled(client, core_api, random_disk_path,  reset_default_disk_label,  reset_disk_settings):  # NOQA
+def test_node_default_disk_labeled(client, core_api, random_disk_path,  reset_default_disk_label,  reset_disk_settings):    # NOQA
     """
     Test node feature: create default Disk according to the node label
 
@@ -1548,17 +1533,11 @@ def test_node_default_disk_labeled(client, core_api, random_disk_path,  reset_de
     6. Check node 1. A new disk should be created at the random disk path.
     7. Check node 2. There is still no disks
     """
-    # Set up cases.
-    cases = {
-        "disk_exists": None,
-        "labeled": None,
-        "unlabeled": None
-    }
     nodes = client.list_node().data
     assert len(nodes) >= 3
 
     node = nodes[0]
-    cases["disk_exists"] = node.id
+    cases = {"labeled": None, "unlabeled": None, "disk_exists": node.id}
     core_api.patch_node(node.id, {
         "metadata": {
             "labels": {

@@ -108,7 +108,7 @@ def test_backing_image_content(client, volume_name):  # NOQA
         cleanup_all_backing_images(client)
 
 
-def backing_image_content_test(client, volume_name_prefix, bi_name, bi_url):  # NOQA
+def backing_image_content_test(client, volume_name_prefix, bi_name, bi_url):    # NOQA
     """
     Verify the content of the Backing Image is accessible and read-only for
     all volumes.
@@ -126,7 +126,7 @@ def backing_image_content_test(client, volume_name_prefix, bi_name, bi_url):  # 
     """
     lht_host_id = get_self_host_id()
 
-    volume_name1 = volume_name_prefix + "-1"
+    volume_name1 = f"{volume_name_prefix}-1"
     volume1 = create_and_check_volume(
         client, volume_name1, 3,
         str(BACKING_IMAGE_EXT4_SIZE), bi_name)
@@ -158,7 +158,7 @@ def backing_image_content_test(client, volume_name_prefix, bi_name, bi_url):  # 
     data = write_volume_random_data(volume1)
     check_volume_data(volume1, data)
 
-    volume_name2 = volume_name_prefix + "-2"
+    volume_name2 = f"{volume_name_prefix}-2"
     volume2 = create_and_check_volume(
         client, volume_name2, 3,
         str(BACKING_IMAGE_EXT4_SIZE), bi_name)

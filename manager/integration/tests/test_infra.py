@@ -14,8 +14,7 @@ def detect_cloudprovider():
     cloudprovider_name = os.getenv("CLOUDPROVIDER")
 
     if cloudprovider_name == "aws":
-        cloudprovider = aws()
-        return cloudprovider
+        return aws()
     else:
         assert False
 
@@ -24,73 +23,57 @@ def is_node_ready_k8s(node_name, k8s_api_client):
     node_status_k8s = k8s_api_client.read_node_status(node_name)
 
     for node_condition in node_status_k8s.status.conditions:
-        if node_condition.type == "Ready" and \
-           node_condition.status == "True":
-            node_ready = True
-        else:
-            node_ready = False
-
+        node_ready = node_condition.type == "Ready" and node_condition.status == "True"
     return node_ready
 
 
 def wait_for_node_up_k8s(node_name, k8s_api_client):
     node_up = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         if is_node_ready_k8s(node_name, k8s_api_client) is True:
             node_up = True
             break
         else:
             time.sleep(RETRY_INTERVAL)
-            continue
     return node_up
 
 
 def wait_for_node_down_k8s(node_name, k8s_api_client):
     node_down = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         if is_node_ready_k8s(node_name, k8s_api_client) is False:
             node_down = True
             break
         else:
             time.sleep(RETRY_INTERVAL)
-            continue
     return node_down
 
 
 def is_node_ready_longhorn(node_name, longhorn_api_client):
     node = longhorn_api_client.by_id_node(node_name)
 
-    if node.conditions.Ready.status == 'False':
-        node_ready = False
-    else:
-        node_ready = True
-
-    return node_ready
+    return node.conditions.Ready.status != 'False'
 
 
 def wait_for_node_up_longhorn(node_name, longhorn_api_client):
     longhorn_node_up = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         if is_node_ready_longhorn(node_name, longhorn_api_client) is True:
             longhorn_node_up = True
             break
         else:
             time.sleep(RETRY_INTERVAL)
-            continue
-
     return longhorn_node_up
 
 
 def wait_for_node_down_longhorn(node_name, longhorn_api_client):
     longhorn_node_down = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         if is_node_ready_longhorn(node_name, longhorn_api_client) is False:
             longhorn_node_down = True
             break
         else:
             time.sleep(RETRY_INTERVAL)
-            continue
-
     return longhorn_node_down
 
 

@@ -55,10 +55,7 @@ def check_workload_update(core_api, apps_api, count):  # NOQA
     images = client.list_engine_image()
     assert len(images) == 1
     ei_state = get_engine_image_status_value(client, images[0].name)
-    if images[0].state != ei_state:
-        return False
-
-    return True
+    return images[0].state == ei_state
 
 
 def wait_for_longhorn_node_ready():
@@ -302,9 +299,8 @@ def wait_for_toleration_update(core_api, apps_api, count,  # NOQA
             managed_by = p.metadata.labels.get('longhorn.io/managed-by', '')
             if str(managed_by) != "longhorn-manager":
                 continue
-            else:
-                app_name = str(p.metadata.labels.get('app', ''))
-                assert app_name not in not_managed_apps
+            app_name = str(p.metadata.labels.get('app', ''))
+            assert app_name not in not_managed_apps
 
             if p.status.phase != "Running" \
                 or not check_tolerations_set(p.spec.tolerations,
@@ -338,7 +334,7 @@ def check_tolerations_set(current_toleration_list, expected_tolerations,
     return len(expected_tolerations) == found and unexpected == 0
 
 
-def test_instance_manager_cpu_reservation(client, core_api):  # NOQA
+def test_instance_manager_cpu_reservation(client, core_api):    # NOQA
     """
     Test if the CPU requests of instance manager pods are controlled by
     the settings and the node specs correctly.
@@ -386,11 +382,10 @@ def test_instance_manager_cpu_reservation(client, core_api):  # NOQA
                 em_on_host = im
             else:
                 other_ems.append(im)
+        elif im.nodeID == host_node_name:
+            rm_on_host = im
         else:
-            if im.nodeID == host_node_name:
-                rm_on_host = im
-            else:
-                other_rms.append(im)
+            other_rms.append(im)
     assert em_on_host and rm_on_host
     host_kb_node = core_api.read_node(host_node_name)
     if host_kb_node.status.allocatable["cpu"].endswith('m'):
@@ -412,11 +407,23 @@ def test_instance_manager_cpu_reservation(client, core_api):  # NOQA
     client.update(rm_setting, value="20")
     time.sleep(5)
     guaranteed_engine_cpu_setting_check(
-        client, core_api, other_ems, "Running", True,
-        str(int(allocatable_millicpu*10/100)) + "m")
+        client,
+        core_api,
+        other_ems,
+        "Running",
+        True,
+        f"{int(allocatable_millicpu*10/100)}m",
+    )
+
     guaranteed_engine_cpu_setting_check(
-        client, core_api, other_rms, "Running", True,
-        str(int(allocatable_millicpu*20/100)) + "m")
+        client,
+        core_api,
+        other_rms,
+        "Running",
+        True,
+        f"{int(allocatable_millicpu*20/100)}m",
+    )
+
 
     em_setting = client.by_id_setting(SETTING_GUARANTEED_ENGINE_MANAGER_CPU)
     client.update(em_setting, value="0")
@@ -446,11 +453,23 @@ def test_instance_manager_cpu_reservation(client, core_api):  # NOQA
     client.update(rm_setting, value="15")
     time.sleep(5)
     guaranteed_engine_cpu_setting_check(
-        client, core_api, ems, "Running", True,
-        str(int(allocatable_millicpu*20/100)) + "m")
+        client,
+        core_api,
+        ems,
+        "Running",
+        True,
+        f"{int(allocatable_millicpu*20/100)}m",
+    )
+
     guaranteed_engine_cpu_setting_check(
-        client, core_api, rms, "Running", True,
-        str(int(allocatable_millicpu*15/100)) + "m")
+        client,
+        core_api,
+        rms,
+        "Running",
+        True,
+        f"{int(allocatable_millicpu*15/100)}m",
+    )
+
 
     with pytest.raises(Exception) as e:
         client.update(em_setting, value="41")
@@ -601,7 +620,7 @@ def check_priority_class(pod, priority_class=None):  # NOQA
 def wait_for_priority_class_update(core_api, apps_api, count, priority_class=None):  # NOQA
     updated = False
 
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         time.sleep(RETRY_INTERVAL_LONG)
         updated = True
 
@@ -618,8 +637,7 @@ def wait_for_priority_class_update(core_api, apps_api, count, priority_class=Non
         if not updated:
             continue
 
-        if updated:
-            break
+        break
 
     assert updated
 

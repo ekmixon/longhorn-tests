@@ -41,15 +41,12 @@ def gce_wait_for_operation(compute, operation):
 
 
 def initialize_gcloud():
-    # generate a gce_key_file from environment variable text(multi-line string)
-    servicekey_file = open(
+    with open(
         os.path.join(
             os.path.dirname(__file__),
             gce_key_file),
-        'w')
-    servicekey_file.write(gce_key_file_content)
-    servicekey_file.close()
-
+        'w') as servicekey_file:
+        servicekey_file.write(gce_key_file_content)
     retCode = subprocess.call(
         "./google-cloud-sdk/bin/gcloud auth activate-service-account \
         --key-file " + gce_key_file,
@@ -69,5 +66,4 @@ def initialize_gcloud():
 
     # initialize an instance of the Google Compute Engine service
     log.info("getting gce compute service ...")
-    compute = discovery.build('compute', 'v1', credentials=credentials)
-    return compute
+    return discovery.build('compute', 'v1', credentials=credentials)

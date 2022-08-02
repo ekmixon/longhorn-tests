@@ -59,11 +59,7 @@ WAIT_BACKUP_COMPLETE = True  # True, False, None=random
 
 NPODS = os.getenv("STRESS_TEST_NPODS")
 
-if NPODS is None:
-    NPODS = 1
-else:
-    NPODS = int(NPODS)
-
+NPODS = 1 if NPODS is None else int(NPODS)
 count = [str(i) for i in range(NPODS)]
 
 
@@ -138,19 +134,14 @@ def get_random_snapshot(snapshots_md5sum):
     if snapshots_count == 0:
         return None
 
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         snapshot_id = randrange(0, snapshots_count)
         snapshot = snapshots[snapshot_id]
 
-        if snapshots_md5sum[snapshot].removed is True:
-            continue
-        else:
+        if snapshots_md5sum[snapshot].removed is not True:
             break
 
-    if snapshots_md5sum[snapshot].removed is True:
-        return None
-    else:
-        return snapshot
+    return None if snapshots_md5sum[snapshot].removed is True else snapshot
 
 
 def get_random_backup_snapshot_data(snapshots_md5sum):
@@ -161,13 +152,11 @@ def get_random_backup_snapshot_data(snapshots_md5sum):
     if snapshots_count == 0:
         return None
 
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         snapshot_id = randrange(0, snapshots_count)
         snapshot = snapshots[snapshot_id]
 
-        if snapshots_md5sum[snapshot].backup_name is None:
-            continue
-        else:
+        if snapshots_md5sum[snapshot].backup_name is not None:
             break
 
     if snapshots_md5sum[snapshot].backup_name is None:
@@ -207,10 +196,8 @@ def read_data_md5sum(k8s_api_client, pod_name):
                   stdout=True, tty=False,
                   _preload_content=False)
 
-    resp.write_stdin("md5sum " + dest_file_path + "\n")
-    res = resp.readline_stdout(timeout=READ_MD5SUM_TIMEOUT).split()[0]
-
-    return res
+    resp.write_stdin(f"md5sum {dest_file_path}" + "\n")
+    return resp.readline_stdout(timeout=READ_MD5SUM_TIMEOUT).split()[0]
 
 
 def snapshot_create_and_record_md5sum(client, core_api, volume_name, pod_name, snapshots_md5sum): # NOQA
@@ -286,7 +273,7 @@ def backup_create_and_record_md5sum(client, core_api, volume_name, pod_name, sna
 
     if WAIT_BACKUP_COMPLETE is True:
         # wait for volume backupStatus to be updated with new backup record
-        for i in range(RETRY_COUNTS):
+        for _ in range(RETRY_COUNTS):
             volume = client.by_id_volume(volume_name)
             for b in volume.backupStatus:
                 if b.snapshot == snap_name:
@@ -296,7 +283,7 @@ def backup_create_and_record_md5sum(client, core_api, volume_name, pod_name, sna
                                                    snap_name)
                         break
                     else:
-                        print("...aborting backup " + b.error)
+                        print(f"...aborting backup {b.error}")
                         return
             time.sleep(RETRY_INTERVAL)
 
@@ -308,7 +295,7 @@ def backup_create_and_record_md5sum(client, core_api, volume_name, pod_name, sna
 
 
 def restore_and_check_random_backup(client, core_api, volume_name, pod_name, snapshots_md5sum): # NOQA
-    res_volume_name = volume_name + '-restore'
+    res_volume_name = f'{volume_name}-restore'
 
     host_id = get_self_host_id()
 
@@ -351,10 +338,7 @@ def restore_and_check_random_backup(client, core_api, volume_name, pod_name, sna
 
     bkp_data_md5sum = output.split()[0].decode('utf-8')
 
-    bkp_checksum_ok = False
-    if snap_data.data_md5sum == bkp_data_md5sum:
-        bkp_checksum_ok = True
-
+    bkp_checksum_ok = snap_data.data_md5sum == bkp_data_md5sum
     umount_disk(mount_path)
 
     command = ['rmdir', mount_path]
@@ -376,10 +360,10 @@ def delete_replica(client, volume_name):
 
     replica_count = len(volume.replicas)
 
-    healthy_replica_count = 0
-    for replica in volume.replicas:
-        if replica.running is True and replica.mode == "RW":
-            healthy_replica_count += 1
+    healthy_replica_count = sum(
+        replica.running is True and replica.mode == "RW"
+        for replica in volume.replicas
+    )
 
     # return if there is no or only one healthy replica left
     if healthy_replica_count == 1:
@@ -416,12 +400,13 @@ def write_data(k8s_api_client, pod_name):
     src_file_path = src_dir_path + file_name
     dest_file_path = dest_dir_path + file_name
 
-    src_file = open('%s' % src_file_path, 'wb')
-    src_file.write(os.urandom(TEST_DATA_BYTES))
-    src_file.close()
+    with open(f'{src_file_path}', 'wb') as src_file:
+        src_file.write(os.urandom(TEST_DATA_BYTES))
     src_file_md5sum = get_md5sum(src_file_path)
-    command = 'kubectl cp ' + src_file_path + \
-              ' ' + pod_name + ':' + dest_file_path
+    command = (
+        ((f'kubectl cp {src_file_path}' + ' ') + pod_name) + ':'
+    ) + dest_file_path
+
     subprocess.call(command, shell=True)
 
     exec_command = exec_command = ['/bin/sh']
@@ -433,14 +418,14 @@ def write_data(k8s_api_client, pod_name):
                   stdout=True, tty=False,
                   _preload_content=False)
 
-    resp.write_stdin("md5sum " + dest_file_path + "\n")
+    resp.write_stdin(f"md5sum {dest_file_path}" + "\n")
     res = resp.readline_stdout(timeout=READ_MD5SUM_TIMEOUT).split()[0]
 
     assert res == src_file_md5sum
 
 
 def delete_data(k8s_api_client, pod_name):
-    file_name = 'data-' + pod_name + '.bin'
+    file_name = f'data-{pod_name}.bin'
     test_data = generate_random_data(0)
 
     write_pod_volume_data(k8s_api_client,
@@ -511,12 +496,7 @@ def clean_volume_backups(client, volume_name):
     print("cleaning all volume backups ", end='... ')
     bvs = client.list_backupVolume().data
 
-    bv = None
-    for i in bvs:
-        if i.name == volume_name:
-            bv = i
-            break
-
+    bv = next((i for i in bvs if i.name == volume_name), None)
     if bv is not None:
         backups = bv.backupList()
         for b in backups:
@@ -576,73 +556,73 @@ def generate_load(request):
 
     create_and_wait_pod(k8s_api_client, pod_manifest)
 
-    snapshots_md5sum = dict()
+    snapshots_md5sum = {}
 
     write_data(k8s_api_client, pod_name)
     create_recurring_jobs(longhorn_api_client, volume_name)
 
     global N_RANDOM_ACTIONS
-    for round in range(N_RANDOM_ACTIONS):
+    for _ in range(N_RANDOM_ACTIONS):
         action = randrange(0, 8)
 
         if action == 0:
-            print("write data started: " + time_now(), end=', ')
+            print(f"write data started: {time_now()}", end=', ')
             write_data(k8s_api_client, pod_name)
-            print("ended: " + time_now())
+            print(f"ended: {time_now()}")
 
         elif action == 1:
-            print("delete data started: " + time_now(), end=', ')
+            print(f"delete data started: {time_now()}", end=', ')
             delete_data(k8s_api_client, pod_name)
-            print("ended: " + time_now())
+            print(f"ended: {time_now()}")
 
         elif action == 2:
-            print("create snapshot started: " + time_now(), end=', ')
+            print(f"create snapshot started: {time_now()}", end=', ')
             snapshot_create_and_record_md5sum(longhorn_api_client,
                                               k8s_api_client,
                                               volume_name,
                                               pod_name,
                                               snapshots_md5sum)
-            print("ended: " + time_now())
+            print(f"ended: {time_now()}")
 
         elif action == 3:
-            print("delete random snapshot  started: " + time_now(), end=', ')
+            print(f"delete random snapshot  started: {time_now()}", end=', ')
             delete_random_snapshot(longhorn_api_client,
                                    volume_name,
                                    snapshots_md5sum)
-            print("ended: " + time_now())
+            print(f"ended: {time_now()}")
 
         elif action == 4:
-            print("revert random snapshot started: " + time_now(), end=', ')
+            print(f"revert random snapshot started: {time_now()}", end=', ')
             revert_random_snapshot(longhorn_api_client,
                                    k8s_api_client,
                                    volume_name,
                                    pod_manifest,
                                    snapshots_md5sum)
-            print("ended: " + time_now())
+            print(f"ended: {time_now()}")
 
         elif action == 5:
-            print("create backup started: " + time_now(), end=', ')
+            print(f"create backup started: {time_now()}", end=', ')
             backup_create_and_record_md5sum(longhorn_api_client,
                                             k8s_api_client,
                                             volume_name,
                                             pod_name,
                                             snapshots_md5sum)
-            print("ended: " + time_now())
+            print(f"ended: {time_now()}")
 
         elif action == 6:
-            print("delete replica started: " + time_now(), end=', ')
+            print(f"delete replica started: {time_now()}", end=', ')
             delete_replica(longhorn_api_client, volume_name)
-            print("ended: " + time_now())
+            print(f"ended: {time_now()}")
 
         elif action == 7:
-            print("restore random backup started: " + time_now(), end=', ')
+            print(f"restore random backup started: {time_now()}", end=', ')
             restore_and_check_random_backup(longhorn_api_client,
                                             k8s_api_client,
                                             volume_name,
                                             pod_name,
                                             snapshots_md5sum)
 
-            print("ended: " + time_now())
+            print(f"ended: {time_now()}")
 
     clean_volume_backups(longhorn_api_client, volume_name)
 

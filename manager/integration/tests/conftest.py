@@ -103,7 +103,9 @@ def pytest_collection_modifyitems(config, items):
 
     if config.getoption(SKIP_BACKING_IMAGE_OPT):
         skip_backing_image = pytest.mark.skip(
-            reason="remove " + SKIP_BACKING_IMAGE_OPT + " option to run")
+            reason=f"remove {SKIP_BACKING_IMAGE_OPT} option to run"
+        )
+
         for item in items:
             if "backing_image" in item.keywords:
                 item.add_marker(skip_backing_image)

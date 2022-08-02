@@ -176,18 +176,15 @@ def test_migration_with_rebuilding_replica(clients, volume_name):  # NOQA
     return
 
 
-def get_hosts_for_migration_test(clients): # NOQA
+def get_hosts_for_migration_test(clients):    # NOQA
     """
     Filters out the current node from the returned hosts list
 
     We use the current node for device writing before the test
     and verification of the data after the test
     """
-    hosts = []
     current_host = common.get_self_host_id()
-    for host in list(clients):
-        if host is not current_host:
-            hosts.append(host)
+    hosts = [host for host in list(clients) if host is not current_host]
     return hosts[0], hosts[1]
 
 

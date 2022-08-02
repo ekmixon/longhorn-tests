@@ -14,11 +14,10 @@ class digitalocean(cloudprovider):
     DO_API_TIMEOUT_SEC = 120
 
     def is_api_token_defined(self):
-        if self.DO_API_TOKEN is None or self.DO_API_TOKEN == "":
-            print("Err: ENV_DO_API_TOKEN is not defined")
-            return False
-        else:
+        if self.DO_API_TOKEN is not None and self.DO_API_TOKEN != "":
             return True
+        print("Err: ENV_DO_API_TOKEN is not defined")
+        return False
 
     def node_id(self, node_name):
         assert self.is_api_token_defined()
@@ -28,7 +27,7 @@ class digitalocean(cloudprovider):
         payload = {'tag_name': self.DO_NODE_TAG}
 
         do_api_response = \
-            requests.get(api_url, params=payload, headers=self.DO_REQ_HEADERS)
+                requests.get(api_url, params=payload, headers=self.DO_REQ_HEADERS)
 
         do_nodes = do_api_response.json()
 
@@ -71,7 +70,7 @@ class digitalocean(cloudprovider):
             requests.post(api_url, headers=self.DO_REQ_HEADERS, json=payload)
 
             action_ok = False
-            for i in range(self.DO_API_TIMEOUT_SEC):
+            for _ in range(self.DO_API_TIMEOUT_SEC):
                 droplet_status = self.node_status(droplet_id)
                 if droplet_status == desired_status:
                     action_ok = True

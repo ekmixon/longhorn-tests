@@ -84,15 +84,18 @@ def volumesnapshotclass(request):
 
 @pytest.fixture
 def volumesnapshot(request):
-    class VolumeSnapshotFactory():
+
+
+
+    class VolumeSnapshotFactory:
         manifests = []
 
         @staticmethod
         def create_volumesnapshot(name,
-                                  namespace,
-                                  volumesnapshotclass_name,
-                                  source_type,
-                                  source_name):
+                                          namespace,
+                                          volumesnapshotclass_name,
+                                          source_type,
+                                          source_name):
             manifest = {
                 'apiVersion': 'snapshot.storage.k8s.io/v1beta1',
                 'kind': 'VolumeSnapshot',
@@ -126,7 +129,7 @@ def volumesnapshot(request):
             except ApiException as e:
                 print("exception create volumesnapshot %s\n" % e)
 
-            for i in range(RETRY_COUNTS):
+            for _ in range(RETRY_COUNTS):
                 status = \
                     api.get_namespaced_custom_object_status(
                             group=api_group,
@@ -134,24 +137,27 @@ def volumesnapshot(request):
                             namespace=namespace,
                             plural=plural,
                             name=name)
-                if "status" in status:
-                    if "boundVolumeSnapshotContentName" in status["status"]:
-                        break
+                if (
+                    "status" in status
+                    and "boundVolumeSnapshotContentName" in status["status"]
+                ):
+                    break
                 time.sleep(RETRY_INTERVAL)
 
             return status
 
+
     yield VolumeSnapshotFactory.create_volumesnapshot
 
     api = get_custom_object_api_client()
+
+    plural = "volumesnapshots"
 
     for manifest in VolumeSnapshotFactory.manifests:
         api_group = urlparse(manifest["apiVersion"]).path.split("/")[0]
         api_version = urlparse(manifest["apiVersion"]).path.split("/")[1]
         namespace = manifest["metadata"]["namespace"]
         name = manifest["metadata"]["name"]
-        plural = "volumesnapshots"
-
         try:
             api.delete_namespaced_custom_object(group=api_group,
                                                 version=api_version,
@@ -164,16 +170,19 @@ def volumesnapshot(request):
 
 @pytest.fixture
 def volumesnapshotcontent(request):
-    class VolumeSnapshotContentFactory():
+
+
+
+    class VolumeSnapshotContentFactory:
         manifests = []
 
         @staticmethod
         def create_volumesnapshotcontent(name,
-                                         volumesnapshotclass_name,
-                                         delete_policy,
-                                         snapshot_handle,
-                                         volumesnapshot_ref_name,
-                                         volumesnapshot_ref_namespace):
+                                                 volumesnapshotclass_name,
+                                                 delete_policy,
+                                                 snapshot_handle,
+                                                 volumesnapshot_ref_name,
+                                                 volumesnapshot_ref_namespace):
             manifest = {
                 "apiVersion": "snapshot.storage.k8s.io/v1beta1",
                 "kind": "VolumeSnapshotContent",
@@ -211,29 +220,32 @@ def volumesnapshotcontent(request):
             except ApiException as e:
                 print("exception create volumesnapshotcontent %s\n" % e)
 
-            for i in range(RETRY_COUNTS):
+            for _ in range(RETRY_COUNTS):
                 status = \
                     api.get_cluster_custom_object_status(group=api_group,
                                                          version=api_version,
                                                          plural=plural,
                                                          name=name)
-                if "status" in status:
-                    if status["status"]["readyToUse"] is True:
-                        break
+                if (
+                    "status" in status
+                    and status["status"]["readyToUse"] is True
+                ):
+                    break
                 time.sleep(RETRY_INTERVAL)
 
             return status
+
 
     yield VolumeSnapshotContentFactory.create_volumesnapshotcontent
 
     api = get_custom_object_api_client()
 
+    plural = "volumesnapshotcontents"
+
     for manifest in VolumeSnapshotContentFactory.manifests:
         api_group = urlparse(manifest["apiVersion"]).path.split("/")[0]
         api_version = urlparse(manifest["apiVersion"]).path.split("/")[1]
         name = manifest["metadata"]["name"]
-        plural = "volumesnapshotcontents"
-
         try:
             api.delete_cluster_custom_object(group=api_group,
                                              version=api_version,
@@ -283,7 +295,7 @@ def wait_for_volumesnapshot_ready(volumesnapshot_name, namespace):
     api_version = "v1beta1"
     plural = "volumesnapshots"
 
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         v = api.get_namespaced_custom_object_status(group=api_group,
                                                     version=api_version,
                                                     namespace=namespace,
@@ -329,7 +341,7 @@ def restore_csi_volume_snapshot(core_api, client, csivolsnap, pvc_name, pvc_requ
 
     restore_volume_name = None
     restore_pvc_name = restore_pvc["metadata"]["name"]
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         restore_pvc = \
             core_api.read_namespaced_persistent_volume_claim(
                 name=restore_pvc_name,
@@ -360,7 +372,7 @@ def test_csi_volumesnapshot_basic(set_random_backupstore, # NOQA
                                   pvc, # NOQA
                                   pod_make, # NOQA
                                   volsnapshotclass_delete_policy, # NOQA
-                                  backup_is_deleted): # NOQA
+                                  backup_is_deleted):    # NOQA
     """
     Test creation / restoration / deletion of a backup via the csi snapshotter
 
@@ -429,15 +441,18 @@ def test_csi_volumesnapshot_basic(set_random_backupstore, # NOQA
                                     data_path="/data/test")
 
     # Create volumeSnapshot test
-    csivolsnap = volumesnapshot(volume_name + "-volumesnapshot",
-                                "default",
-                                csisnapclass["metadata"]["name"],
-                                "persistentVolumeClaimName",
-                                pvc_name)
+    csivolsnap = volumesnapshot(
+        f"{volume_name}-volumesnapshot",
+        "default",
+        csisnapclass["metadata"]["name"],
+        "persistentVolumeClaimName",
+        pvc_name,
+    )
+
 
     volume = client.by_id_volume(volume_name)
 
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         snapshots = volume.snapshotList()
         if len(snapshots) == 2:
             break
@@ -496,7 +511,7 @@ def test_csi_volumesnapshot_restore_existing_backup(set_random_backupstore, # NO
                                                     volumesnapshotcontent,
                                                     volumesnapshot, # NOQA
                                                     volsnapshotclass_delete_policy, # NOQA
-                                                    backup_is_deleted): # NOQA
+                                                    backup_is_deleted):    # NOQA
     """
     Test retention of a backup while deleting the associated `VolumeSnapshot`
     via the csi snapshotter
@@ -540,16 +555,18 @@ def test_csi_volumesnapshot_restore_existing_backup(set_random_backupstore, # NO
     wait_for_backup_completion(client, volume_name, snap.name)
     bv, b = find_backup(client, volume_name, snap.name)
 
-    csivolsnap_name = volume_name + "-volumesnapshot"
+    csivolsnap_name = f"{volume_name}-volumesnapshot"
     csivolsnap_namespace = "default"
 
-    volsnapcontent = \
-        volumesnapshotcontent("volsnapcontent",
-                              csisnapclass["metadata"]["name"],
-                              "Delete",
-                              "bs://" + volume_name + "/" + b.name,
-                              csivolsnap_name,
-                              csivolsnap_namespace)
+    volsnapcontent = volumesnapshotcontent(
+        "volsnapcontent",
+        csisnapclass["metadata"]["name"],
+        "Delete",
+        f"bs://{volume_name}/{b.name}",
+        csivolsnap_name,
+        csivolsnap_namespace,
+    )
+
 
     csivolsnap = volumesnapshot(csivolsnap_name,
                                 csivolsnap_namespace,

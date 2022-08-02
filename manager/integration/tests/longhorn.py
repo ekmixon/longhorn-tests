@@ -31,8 +31,8 @@ def _prefix(cmd):
 
 
 PREFIX = _prefix(__file__)
-CACHE_DIR = '~/.' + PREFIX.lower()
-TIME = not os.environ.get('TIME_API') is None
+CACHE_DIR = f'~/.{PREFIX.lower()}'
+TIME = os.environ.get('TIME_API') is not None
 
 LIST = 'list-'
 CREATE = 'create-'
@@ -100,7 +100,7 @@ class RestObject:
                     v = 'false'
                 v = str(v)
                 if TRIM and len(v) > 70:
-                    v = v[0:70] + '...'
+                    v = v[:70] + '...'
                 data.append((self.type, self.id, str(k), v))
 
         return indent(data, hasHeader=True, prefix='| ', postfix=' |',
@@ -110,23 +110,16 @@ class RestObject:
         return 'data' in self.__dict__ and isinstance(self.data, list)
 
     def __repr__(self):
-        data = {}
-        for k, v in six.iteritems(self.__dict__):
-            if self._is_public(k, v):
-                data[k] = v
+        data = {k: v for k, v in six.iteritems(self.__dict__) if self._is_public(k, v)}
         return repr(data)
 
     def __len__(self):
-        if self._is_list():
-            return len(self.data)
-        return len(self.__dict__)
+        return len(self.data) if self._is_list() else len(self.__dict__)
 
     def __getitem__(self, key):
         if not self:
             return None
-        if self._is_list():
-            return self.data[key]
-        return self.__dict__[key]
+        return self.data[key] if self._is_list() else self.__dict__[key]
 
     def __getattr__(self, k):
         if self._is_list() and k in LIST_METHODS:
@@ -134,9 +127,7 @@ class RestObject:
         return getattr(self.__dict__, k)
 
     def __iter__(self):
-        if self._is_list():
-            return iter(self.data)
-        return iter(self.__dict__)
+        return iter(self.data) if self._is_list() else iter(self.__dict__)
 
 
 class Schema(object):
@@ -194,7 +185,7 @@ class ApiError(Exception):
         obj.code = status_code
         self.error = obj
         try:
-            msg = '{} : {}\n{}'.format(obj.code, obj.message, obj)
+            msg = f'{obj.code} : {obj.message}\n{obj}'
             super(ApiError, self).__init__(self, msg)
         except Exception:
             super(ApiError, self).__init__(self, 'API Error')
@@ -250,8 +241,9 @@ class GdapiClient(object):
                     for link_name, link in six.iteritems(result.links):
                         def cb(_link=link, **kw):
                             return self._get(_link, data=kw)
+
                         if hasattr(result, link_name):
-                            setattr(result, link_name + '_link', cb)
+                            setattr(result, f'{link_name}_link', cb)
                         else:
                             setattr(result, link_name, cb)
 
@@ -261,8 +253,9 @@ class GdapiClient(object):
                                _result=result, *args, **kw):
                             return self.action(_result, _link_name,
                                                *args, **kw)
+
                         if hasattr(result, link_name):
-                            setattr(result, link_name + '_action', cb)
+                            setattr(result, f'{link_name}_action', cb)
                         else:
                             setattr(result, link_name, cb)
 
@@ -324,9 +317,11 @@ class GdapiClient(object):
     def _unmarshall(self, text):
         if text is None or text == '':
             return text
-        obj = json.loads(text, object_hook=self.object_hook,
-                         object_pairs_hook=self.object_pairs_hook)
-        return obj
+        return json.loads(
+            text,
+            object_hook=self.object_hook,
+            object_pairs_hook=self.object_pairs_hook,
+        )
 
     def _marshall(self, obj, indent=None, sort_keys=False):
         if obj is None:
@@ -376,11 +371,7 @@ class GdapiClient(object):
 
     def update_by_id(self, type, id, *args, **kw):
         url = self.schema.types[type].links.collection
-        if url.endswith('/'):
-            url = url + id
-        else:
-            url = '/'.join([url, id])
-
+        url = url + id if url.endswith('/') else '/'.join([url, id])
         return self._put_and_retry(url, *args, **kw)
 
     def update(self, obj, *args, **kw):
@@ -390,29 +381,27 @@ class GdapiClient(object):
     def _put_and_retry(self, url, *args, **kw):
         retries = kw.get('retries', 3)
         last_error = None
-        for i in range(retries):
+        for _ in range(retries):
             try:
                 return self._put(url, data=self._to_dict(*args, **kw))
             except ApiError as e:
-                if e.error.code == 409:
-                    last_error = e
-                    time.sleep(.1)
-                else:
+                if e.error.code != 409:
                     raise e
+                last_error = e
+                time.sleep(.1)
         raise last_error
 
     def _post_and_retry(self, url, *args, **kw):
         retries = kw.get('retries', 3)
         last_error = None
-        for i in range(retries):
+        for _ in range(retries):
             try:
                 return self._post(url, data=self._to_dict(*args, **kw))
             except ApiError as e:
-                if e.error.code == 409:
-                    last_error = e
-                    time.sleep(.1)
-                else:
+                if e.error.code != 409:
                     raise e
+                last_error = e
+                time.sleep(.1)
         raise last_error
 
     def _validate_list(self, type, **kw):
@@ -430,11 +419,11 @@ class GdapiClient(object):
                     if k == '_'.join([filter_name, m]):
                         return
 
-            raise ClientApiError(k + ' is not searchable field')
+            raise ClientApiError(f'{k} is not searchable field')
 
     def list(self, type, **kw):
         if type not in self.schema.types:
-            raise ClientApiError(type + ' is not a valid type')
+            raise ClientApiError(f'{type} is not a valid type')
 
         self._validate_list(type, **kw)
         collection_url = self.schema.types[type].links.collection
@@ -460,42 +449,36 @@ class GdapiClient(object):
         if isinstance(obj, list):
             return True
 
-        if isinstance(obj, RestObject) and 'type' in obj.__dict__ and \
-                obj.type == 'collection':
-            return True
-
-        return False
+        return (
+            isinstance(obj, RestObject)
+            and 'type' in obj.__dict__
+            and obj.type == 'collection'
+        )
 
     def _to_value(self, value):
         if isinstance(value, dict):
-            ret = {}
-            for k, v in six.iteritems(value):
-                ret[k] = self._to_value(v)
+            ret = {k: self._to_value(v) for k, v in six.iteritems(value)}
             return ret
 
         if isinstance(value, list):
-            ret = []
-            for v in value:
-                ret.append(self._to_value(v))
+            ret = [self._to_value(v) for v in value]
             return ret
 
         if isinstance(value, RestObject):
             ret = {}
             for k, v in vars(value).items():
-                if not k.startswith('_') and \
-                        not isinstance(v, RestObject) and not callable(v):
-                    ret[k] = self._to_value(v)
-                elif not k.startswith('_') and isinstance(v, RestObject):
-                    ret[k] = self._to_dict(v)
+                if not k.startswith('_'):
+                    if not isinstance(v, RestObject) and not callable(v):
+                        ret[k] = self._to_value(v)
+                    elif isinstance(v, RestObject):
+                        ret[k] = self._to_dict(v)
             return ret
 
         return value
 
     def _to_dict(self, *args, **kw):
-        if len(kw) == 0 and len(args) == 1 and self._is_list(args[0]):
-            ret = []
-            for i in args[0]:
-                ret.append(self._to_dict(i))
+        if not kw and len(args) == 1 and self._is_list(args[0]):
+            ret = [self._to_dict(i) for i in args[0]]
             return ret
 
         ret = {}
@@ -560,7 +543,7 @@ class GdapiClient(object):
         if not os.path.exists(cachedir):
             os.mkdir(cachedir)
 
-        return os.path.join(cachedir, 'schema-' + h + '.json')
+        return os.path.join(cachedir, f'schema-{h}.json')
 
     def _cache_schema(self, text):
         cached_schema = self._get_cached_schema_file_name()
@@ -622,13 +605,13 @@ def indent(rows, hasHeader=False, headerChar='-', delim=' | ', justify='left',
     def rowWrapper(row):
         newRows = [wrapfunc(item).split('\n') for item in row]
         return [[substr or '' for substr in item] for item in map(None, *newRows)]  # NOQA
+
     # break each logical row into one or more physical ones
     logicalRows = [rowWrapper(row) for row in rows]
     # columns of physical rows
     columns = map(None, *reduce(operator.add, logicalRows))
     # get the maximum of each column by the string length of its items
-    maxWidths = [max([len(str(item)) for item in column])
-                 for column in columns]
+    maxWidths = [max(len(str(item)) for item in column) for column in columns]
     rowSeparator = headerChar * (len(prefix) + len(postfix) +
                                  sum(maxWidths) +
                                  len(delim)*(len(maxWidths)-1))
@@ -650,27 +633,32 @@ def indent(rows, hasHeader=False, headerChar='-', delim=' | ', justify='left',
 
 
 def _env_prefix(cmd):
-    return _prefix(cmd) + '_'
+    return f'{_prefix(cmd)}_'
 
 
-def gdapi_from_env(prefix=PREFIX + '_', factory=GdapiClient, **kw):
-    args = dict((x, None) for x in ['access_key', 'secret_key', 'url', 'cache',
-                                    'cache_time', 'strict'])
-    args.update(kw)
+def gdapi_from_env(prefix=f'{PREFIX}_', factory=GdapiClient, **kw):
+    args = {
+        x: None
+        for x in [
+            'access_key',
+            'secret_key',
+            'url',
+            'cache',
+            'cache_time',
+            'strict',
+        ]
+    } | kw
+
     if not prefix.endswith('_'):
         prefix += '_'
     prefix = prefix.upper()
     return _from_env(prefix=prefix, factory=factory, **args)
 
 
-def _from_env(prefix=PREFIX + '_', factory=GdapiClient, **kw):
+def _from_env(prefix=f'{PREFIX}_', factory=GdapiClient, **kw):
     result = dict(kw)
     for k, v in six.iteritems(kw):
-        if v is not None:
-            result[k] = v
-        else:
-            result[k] = os.environ.get(prefix + k.upper())
-
+        result[k] = v if v is not None else os.environ.get(prefix + k.upper())
         if result[k] is None:
             del result[k]
 
@@ -704,13 +692,13 @@ def _general_args(help=True):
 
 
 def _list_args(subparsers, client, type, schema):
-    help_msg = LIST[0:len(LIST)-1].capitalize() + ' ' + type
+    help_msg = f'{LIST[:-1].capitalize()} {type}'
     subparser = subparsers.add_parser(LIST + type, help=help_msg)
     for name, filter in six.iteritems(schema.collectionFilters):
-        subparser.add_argument('--' + name)
+        subparser.add_argument(f'--{name}')
         for m in filter.modifiers:
             if m != 'eq':
-                subparser.add_argument('--' + name + '_' + m)
+                subparser.add_argument(f'--{name}_{m}')
 
     return subparser
 
@@ -723,10 +711,7 @@ def _map_load(value):
     if value[0] == '{':
         return json.loads(value)
     else:
-        ret = {}
-        for k, v in [x.strip().split('=', 1) for x in value.split(',')]:
-            ret[k] = v
-        return ret
+        return dict([x.strip().split('=', 1) for x in value.split(',')])
 
 
 def _generic_args(subparsers, field_key, type, schema,
@@ -736,19 +721,19 @@ def _generic_args(subparsers, field_key, type, schema,
         help_msg = help
     else:
         prefix = operation + type
-        help_msg_prefix = operation[0:len(operation)-1].capitalize()
-        help_msg = help_msg_prefix + ' ' + type + ' resource'
+        help_msg_prefix = operation[:-1].capitalize()
+        help_msg = f'{help_msg_prefix} {type} resource'
     subparser = subparsers.add_parser(prefix, help=help_msg)
 
     if schema is not None:
         for name, field in six.iteritems(schema):
             if field.get(field_key) is True:
                 if field.get('type').startswith('array'):
-                    subparser.add_argument('--' + name, nargs='*')
+                    subparser.add_argument(f'--{name}', nargs='*')
                 elif field.get('type').startswith('map'):
-                    subparser.add_argument('--' + name, type=_map_load)
+                    subparser.add_argument(f'--{name}', type=_map_load)
                 else:
-                    subparser.add_argument('--' + name)
+                    subparser.add_argument(f'--{name}')
 
     return subparser
 
@@ -782,14 +767,19 @@ def _full_args(client):
                     action_schema = client.schema.types[args.input]
                 except (KeyError, AttributeError):
                     pass
-                help_msg = 'Action ' + name + ' on ' + type
+                help_msg = f'Action {name} on {type}'
                 resource_fields = None
                 if action_schema is not None:
                     resource_fields = action_schema.resourceFields
-                subparser = _generic_args(subparsers, 'create', type,
-                                          resource_fields,
-                                          operation_name=type + '-' + name,
-                                          help=help_msg)
+                subparser = _generic_args(
+                    subparsers,
+                    'create',
+                    type,
+                    resource_fields,
+                    operation_name=f'{type}-{name}',
+                    help=help_msg,
+                )
+
                 subparser.add_argument('--id')
                 subparser.set_defaults(_action=ACTION + name, _type=type)
 
@@ -835,13 +825,12 @@ def _run_cli(client, namespace):
             obj = client.by_id(type_name, args['id'])
             if obj is None:
                 raise ClientApiError('{0} Not Found'.format(args['id']))
-            obj = client.action(obj, command_type[len(ACTION):], **args)
-            if obj:
+            if obj := client.action(obj, command_type[len(ACTION) :], **args):
                 _print_cli(client, obj)
     except ApiError as e:
         import sys
 
-        sys.stderr.write('Error : {}\n'.format(e.error))
+        sys.stderr.write(f'Error : {e.error}\n')
         status = int(e.error.code) - 400
         if status > 0 and status < 255:
             sys.exit(status)
@@ -889,10 +878,7 @@ def _cli_client(argv):
     if args._format == 'json':
         JSON = True
 
-    dict_args = {}
-    for k, v in vars(args).items():
-        dict_args[k[1:]] = v
-
+    dict_args = {k[1:]: v for k, v in vars(args).items()}
     prefix = _env_prefix(argv[0])
     return _from_env(prefix, **dict_args)
 
@@ -915,23 +901,19 @@ class Client(GdapiClient):
         while obj.transitioning == 'yes':
             time.sleep(sleep)
             sleep *= 2
-            if sleep > 2:
-                sleep = 2
+            sleep = min(sleep, 2)
             obj = self.reload(obj)
             delta = time.time() - start
             if delta > timeout:
-                msg = \
-                    'Timeout waiting for [{}:{}] to be done after {} seconds'.\
-                    format(obj.type, obj.id, delta)
+                msg = f'Timeout waiting for [{obj.type}:{obj.id}] to be done after {delta} seconds'
+
                 raise Exception(msg)
 
         return obj
 
 
 def _get_timeout(timeout):
-    if timeout == -1:
-        return DEFAULT_TIMEOUT
-    return timeout
+    return DEFAULT_TIMEOUT if timeout == -1 else timeout
 
 
 def from_env(prefix='CATTLE_', **kw):

@@ -178,15 +178,13 @@ def minio_get_backupstore_bucket_name(client):
     backupstore = backupstore_get_backup_target(client)
 
     assert is_backupTarget_s3(backupstore)
-    bucket_name = urlparse(backupstore).netloc.split('@')[0]
-    return bucket_name
+    return urlparse(backupstore).netloc.split('@')[0]
 
 
 def minio_get_backupstore_path(client):
     backupstore = backupstore_get_backup_target(client)
     assert is_backupTarget_s3(backupstore)
-    backupstore_path = urlparse(backupstore).path.split('$')[0].strip("/")
-    return backupstore_path
+    return urlparse(backupstore).path.split('$')[0].strip("/")
 
 
 def get_nfs_mount_point(client):
@@ -206,15 +204,17 @@ def backup_volume_path(volume_name):
     volume_name_sha512 = \
         hashlib.sha512(volume_name.encode('utf-8')).hexdigest()
 
-    volume_dir_level_1 = volume_name_sha512[0:2]
+    volume_dir_level_1 = volume_name_sha512[:2]
     volume_dir_level_2 = volume_name_sha512[2:4]
 
-    backupstore_bv_path = BACKUPSTORE_BV_PREFIX + \
-        volume_dir_level_1 + "/" + \
-        volume_dir_level_2 + "/" + \
-        volume_name
-
-    return backupstore_bv_path
+    return (
+        BACKUPSTORE_BV_PREFIX
+        + volume_dir_level_1
+        + "/"
+        + volume_dir_level_2
+        + "/"
+        + volume_name
+    )
 
 
 def backupstore_get_backup_volume_prefix(client, volume_name):
@@ -269,12 +269,12 @@ def backupstore_get_backup_cfg_file_path(client, volume_name, backup_name):
 
 def minio_get_backup_cfg_file_path(volume_name, backup_name):
     prefix = minio_get_backup_volume_prefix(volume_name)
-    return prefix + "/backups/backup_" + backup_name + ".cfg"
+    return f"{prefix}/backups/backup_{backup_name}.cfg"
 
 
 def nfs_get_backup_cfg_file_path(client, volume_name, backup_name):
     prefix = nfs_get_backup_volume_prefix(client, volume_name)
-    return prefix + "/backups/backup_" + backup_name + ".cfg"
+    return f"{prefix}/backups/backup_{backup_name}.cfg"
 
 
 def backupstore_get_volume_cfg_file_path(client, volume_name):
@@ -292,12 +292,12 @@ def backupstore_get_volume_cfg_file_path(client, volume_name):
 
 def nfs_get_volume_cfg_file_path(client, volume_name):
     prefix = nfs_get_backup_volume_prefix(client, volume_name)
-    return prefix + "/volume.cfg"
+    return f"{prefix}/volume.cfg"
 
 
 def minio_get_volume_cfg_file_path(volume_name):
     prefix = minio_get_backup_volume_prefix(volume_name)
-    return prefix + "/volume.cfg"
+    return f"{prefix}/volume.cfg"
 
 
 def backupstore_get_backup_blocks_dir(client, volume_name):
@@ -315,12 +315,12 @@ def backupstore_get_backup_blocks_dir(client, volume_name):
 
 def minio_get_backup_blocks_dir(volume_name):
     prefix = minio_get_backup_volume_prefix(volume_name)
-    return prefix + "/blocks"
+    return f"{prefix}/blocks"
 
 
 def nfs_get_backup_blocks_dir(client, volume_name):
     prefix = nfs_get_backup_volume_prefix(client, volume_name)
-    return prefix + "/blocks"
+    return f"{prefix}/blocks"
 
 
 def backupstore_create_file(client, core_api, file_path, data={}):
@@ -406,7 +406,7 @@ def minio_write_backup_cfg_file(client, core_api, volume_name, backup_name, back
     minio_backup_cfg_file_path = minio_get_backup_cfg_file_path(volume_name,
                                                                 backup_name)
 
-    tmp_backup_cfg_file = "/tmp/backup_" + backup_name + ".cfg"
+    tmp_backup_cfg_file = f"/tmp/backup_{backup_name}.cfg"
     with open(tmp_backup_cfg_file, 'w') as tmp_bkp_cfg_file:
         tmp_bkp_cfg_file.write(str(backup_cfg_data))
 
@@ -638,9 +638,7 @@ def nfs_count_backup_block_files(client, volume_name):
     cmd = ["find", backup_blocks_dir, "-type", "f"]
     find_cmd = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     wc_cmd = subprocess.check_output(["wc", "-l"], stdin=find_cmd.stdout)
-    backup_blocks_count = int(wc_cmd.decode().strip())
-
-    return backup_blocks_count
+    return int(wc_cmd.decode().strip())
 
 
 def minio_count_backup_block_files(client, core_api, volume_name):

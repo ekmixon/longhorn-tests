@@ -160,14 +160,18 @@ subprocess.call("sudo iscsiadm -m node --logout", shell=True)
 subprocess.call("sudo rm /dev/longhorn/vol1", shell=True)
 subprocess.call("docker rm -fv `docker ps -a | grep rancher/longhorn | awk '{print $1}'`", shell=True)
 subprocess.call("docker network create --subnet=172.18.0.0/16 longhorn-net", shell=True)
-subprocess.call(("docker run -d --net longhorn-net --ip 172.18.0.2 --expose 9502-9504 -v /volume rancher/longhorn launch replica --listen 172.18.0.2:9502 --size " + SIZE_STR + " /volume").split())
-subprocess.call(("docker run -d --net longhorn-net --ip 172.18.0.3 --expose 9502-9504 -v /volume rancher/longhorn launch replica --listen 172.18.0.3:9502 --size " + SIZE_STR + " /volume").split())
+subprocess.call(
+    f"docker run -d --net longhorn-net --ip 172.18.0.2 --expose 9502-9504 -v /volume rancher/longhorn launch replica --listen 172.18.0.2:9502 --size {SIZE_STR} /volume"
+    .split())
+subprocess.call(
+    f"docker run -d --net longhorn-net --ip 172.18.0.3 --expose 9502-9504 -v /volume rancher/longhorn launch replica --listen 172.18.0.3:9502 --size {SIZE_STR} /volume"
+    .split())
 time.sleep(3)
 controller = subprocess.check_output("docker run -d --net longhorn-net " +
         "--privileged -v /dev:/host/dev -v /proc:/host/proc rancher/longhorn " +
         "launch controller --frontend tgt --replica tcp://172.18.0.2:9502 " +
         "--replica tcp://172.18.0.3:9502 vol1", shell=True).rstrip()
-print "controller = " + controller
+subprocess.call("sudo iscsiadm -m node --logout", shell=True)
 wait_for_dev_ready(1, controller)
 
 manager = Manager()
@@ -177,12 +181,12 @@ snapshots["livedata"] = 0
 
 workers = []
 
-for i in xrange(10):
+for _ in xrange(10):
   p = Process(target = random_write, args = (snapshots, testdata, 2000000))
   workers.append(p)
   p.start()
 
-for i in xrange(10):
+for _ in xrange(10):
   p = Process(target = read_and_check, args = (snapshots, testdata, 2000000))
   workers.append(p)
   p.start()

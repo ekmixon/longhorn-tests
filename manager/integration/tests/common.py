@@ -254,7 +254,7 @@ def get_custom_object_api_client():
 
 
 def get_longhorn_api_client():
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         try:
             k8sconfig.load_incluster_config()
             ips = get_mgr_ips()
@@ -300,7 +300,7 @@ def cleanup_all_volumes(client):
         except Exception as e:
             print("\nException when cleanup volume ", v)
             print(e)
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volumes = client.list_volume()
         if len(volumes) == 0:
             break
@@ -313,10 +313,12 @@ def cleanup_all_volumes(client):
 def create_backup(client, volname, data={}, labels={}):
     volume = client.by_id_volume(volname)
     create_snapshot(client, volname)
-    if not data:
-        data = write_volume_random_data(volume)
-    else:
-        data = write_volume_data(volume, data)
+    data = (
+        write_volume_data(volume, data)
+        if data
+        else write_volume_random_data(volume)
+    )
+
     snap = create_snapshot(client, volname)
     create_snapshot(client, volname)
 
@@ -327,7 +329,7 @@ def create_backup(client, volname, data={}, labels={}):
     wait_for_backup_completion(client, volname, snap.name)
 
     verified = False
-    for i in range(RETRY_COMMAND_COUNT):
+    for _ in range(RETRY_COMMAND_COUNT):
         bv, b = find_backup(client, volname, snap.name)
         new_b = bv.backupGet(name=b.name)
         if new_b.name == b.name and \
@@ -415,7 +417,7 @@ def wait_pod(pod_name):
     api = get_core_api_client()
 
     pod = None
-    for i in range(DEFAULT_POD_TIMEOUT):
+    for _ in range(DEFAULT_POD_TIMEOUT):
         pod = api.read_namespaced_pod(
             name=pod_name,
             namespace='default')
@@ -512,13 +514,13 @@ def delete_and_wait_statefulset(api, client, statefulset):
     except ApiException as e:
         assert e.status == 404
 
-    for i in range(DEFAULT_POD_TIMEOUT):
+    for _ in range(DEFAULT_POD_TIMEOUT):
         ret = apps_api.list_namespaced_stateful_set(namespace='default')
-        found = False
-        for item in ret.items:
-            if item.metadata.name == statefulset['metadata']['name']:
-                found = True
-                break
+        found = any(
+            item.metadata.name == statefulset['metadata']['name']
+            for item in ret.items
+        )
+
         if not found:
             break
         time.sleep(DEFAULT_POD_INTERVAL)
@@ -533,7 +535,7 @@ def delete_and_wait_statefulset(api, client, statefulset):
         # the PVC is deleted. If it is Failed, we know it is a PV and we must
         # delete it manually. If it is removed from the system, we can just
         # wait for deletion.
-        for i in range(DEFAULT_POD_TIMEOUT):
+        for _ in range(DEFAULT_POD_TIMEOUT):
             ret = api.list_persistent_volume()
             found = False
             for item in ret.items:
@@ -605,11 +607,7 @@ def read_volume_data(api, pod_name, filename='test'):
     Returns:
         The data contained within the volume.
     """
-    read_command = [
-        '/bin/sh',
-        '-c',
-        'cat /data/' + filename
-    ]
+    read_command = ['/bin/sh', '-c', f'cat /data/{filename}']
     with timeout(seconds=STREAM_EXEC_TIMEOUT,
                  error_message='Timeout on executing stream read'):
         return stream(
@@ -627,11 +625,7 @@ def write_pod_volume_data(api, pod_name, test_data, filename='test'):
         pod_name: The name of the Pod.
         test_data: The data to be written.
     """
-    write_command = [
-        '/bin/sh',
-        '-c',
-        'echo -ne ' + test_data + ' > /data/' + filename
-    ]
+    write_command = ['/bin/sh', '-c', f'echo -ne {test_data} > /data/{filename}']
     with timeout(seconds=STREAM_EXEC_TIMEOUT,
                  error_message='Timeout on executing stream write'):
         return stream(
@@ -642,17 +636,18 @@ def write_pod_volume_data(api, pod_name, test_data, filename='test'):
 
 def write_pod_block_volume_data(api, pod_name, test_data, offset, device_path):
     tmp_file = '/var/test_data'
-    pre_write_cmd = [
-        '/bin/sh',
-        '-c',
-        'echo -ne ' + test_data + ' > ' + tmp_file
-    ]
+    pre_write_cmd = ['/bin/sh', '-c', f'echo -ne {test_data} > {tmp_file}']
     write_cmd = [
         '/bin/sh',
         '-c',
-        'dd if=' + tmp_file + ' of=' + device_path +
-        ' bs=' + str(len(test_data)) + ' count=1 seek=' + str(offset)
+        (
+            (f'dd if={tmp_file} of={device_path}' + ' bs=')
+            + str(len(test_data))
+            + ' count=1 seek='
+        )
+        + str(offset),
     ]
+
     with timeout(seconds=STREAM_EXEC_TIMEOUT,
                  error_message='Timeout on executing stream write'):
         stream(api.connect_get_namespaced_pod_exec, pod_name, 'default',
@@ -668,9 +663,14 @@ def read_pod_block_volume_data(api, pod_name, data_size, offset, device_path):
     read_command = [
         '/bin/sh',
         '-c',
-        'dd if=' + device_path +
-        ' status=none bs=' + str(data_size) + ' count=1 skip=' + str(offset)
+        (
+            (f'dd if={device_path}' + ' status=none bs=')
+            + str(data_size)
+            + ' count=1 skip='
+        )
+        + str(offset),
     ]
+
     with timeout(seconds=STREAM_EXEC_TIMEOUT,
                  error_message='Timeout on executing stream read'):
         return stream(
@@ -704,9 +704,7 @@ def exec_command_in_pod(api, command, pod_name, namespace):
 
 
 def get_pod_data_md5sum(api, pod_name, path):
-    md5sum_command = [
-        '/bin/sh', '-c', 'md5sum ' + path + " | awk '{print $1}'"
-    ]
+    md5sum_command = ['/bin/sh', '-c', f'md5sum {path}' + " | awk '{print $1}'"]
     with timeout(seconds=STREAM_EXEC_TIMEOUT * 3,
                  error_message='Timeout on executing stream md5sum'):
         return stream(
@@ -719,9 +717,10 @@ def write_pod_volume_random_data(api, pod_name, path, size_in_mb):
     write_cmd = [
         '/bin/sh',
         '-c',
-        'dd if=/dev/urandom of=' + path +
-        ' bs=1M' + ' count=' + str(size_in_mb)
+        ((f'dd if=/dev/urandom of={path}' + ' bs=1M') + ' count=')
+        + str(size_in_mb),
     ]
+
     return stream(
         api.connect_get_namespaced_pod_exec, pod_name, 'default',
         command=write_cmd, stderr=True, stdin=False, stdout=True,
@@ -729,11 +728,7 @@ def write_pod_volume_random_data(api, pod_name, path, size_in_mb):
 
 
 def copy_pod_volume_data(api, pod_name, src_path, dest_path):
-    write_cmd = [
-        '/bin/sh',
-        '-c',
-        'dd if=' + src_path + ' of=' + dest_path
-    ]
+    write_cmd = ['/bin/sh', '-c', f'dd if={src_path} of={dest_path}']
     return stream(
         api.connect_get_namespaced_pod_exec, pod_name, 'default',
         command=write_cmd, stderr=True, stdin=False, stdout=True,
@@ -750,21 +745,17 @@ def size_to_string(volume_size):
         The size of the volume in gigabytes as a passable string to Kubernetes.
     """
     if volume_size >= Gi:
-        return str(volume_size >> 30) + 'Gi'
+        return f'{str(volume_size >> 30)}Gi'
     elif volume_size >= Mi:
-        return str(volume_size >> 20) + 'Mi'
+        return f'{str(volume_size >> 20)}Mi'
     else:
-        return str(volume_size >> 10) + 'Ki'
+        return f'{str(volume_size >> 10)}Ki'
 
 
 def wait_delete_pod(api, pod_uid, namespace='default'):
-    for i in range(DEFAULT_POD_TIMEOUT):
+    for _ in range(DEFAULT_POD_TIMEOUT):
         ret = api.list_namespaced_pod(namespace=namespace)
-        found = False
-        for item in ret.items:
-            if item.metadata.uid == pod_uid:
-                found = True
-                break
+        found = any(item.metadata.uid == pod_uid for item in ret.items)
         if not found:
             break
         time.sleep(DEFAULT_POD_INTERVAL)
@@ -928,9 +919,7 @@ def scheduling_api(request):
     c.assert_hostname = False
     Configuration.set_default(c)
     k8sconfig.load_incluster_config()
-    scheduling_api = k8sclient.SchedulingV1Api()
-
-    return scheduling_api
+    return k8sclient.SchedulingV1Api()
 
 
 @pytest.fixture
@@ -944,9 +933,7 @@ def core_api(request):
     c.assert_hostname = False
     Configuration.set_default(c)
     k8sconfig.load_incluster_config()
-    core_api = k8sclient.CoreV1Api()
-
-    return core_api
+    return k8sclient.CoreV1Api()
 
 
 @pytest.fixture
@@ -960,9 +947,7 @@ def apps_api(request):
     c.assert_hostname = False
     Configuration.set_default(c)
     k8sconfig.load_incluster_config()
-    apps_api = k8sclient.AppsV1Api()
-
-    return apps_api
+    return k8sclient.AppsV1Api()
 
 
 @pytest.fixture
@@ -976,9 +961,7 @@ def batch_v1_beta_api(request):
     c.assert_hostname = False
     Configuration.set_default(c)
     k8sconfig.load_incluster_config()
-    api = k8sclient.BatchV1beta1Api()
-
-    return api
+    return k8sclient.BatchV1beta1Api()
 
 
 def get_pv_manifest(request):
@@ -1213,13 +1196,17 @@ def priority_class(request):
         'apiVersion': 'scheduling.k8s.io/v1',
         'kind': 'PriorityClass',
         'metadata': {
-            'name': PRIORITY_CLASS_NAME + "-" + ''.join(
-                random.choice(string.ascii_lowercase +
-                              string.digits)
-                for _ in range(6))
+            'name': (
+                f"{PRIORITY_CLASS_NAME}-"
+                + ''.join(
+                    random.choice(string.ascii_lowercase + string.digits)
+                    for _ in range(6)
+                )
+            )
         },
-        'value': random.randrange(PRIORITY_CLASS_MIN, PRIORITY_CLASS_MAX)
+        'value': random.randrange(PRIORITY_CLASS_MIN, PRIORITY_CLASS_MAX),
     }
+
 
     def finalizer():
         # ensure that the priority class gets unset for longhorn
@@ -1371,19 +1358,15 @@ def cleanup_client():
 
 
 def get_client(address):
-    url = 'http://' + address + '/v1/schemas'
-    c = longhorn.from_env(url=url)
-    return c
+    url = f'http://{address}/v1/schemas'
+    return longhorn.from_env(url=url)
 
 
 def get_mgr_ips():
     ret = k8sclient.CoreV1Api().list_pod_for_all_namespaces(
             label_selector="app=longhorn-manager",
             watch=False)
-    mgr_ips = []
-    for i in ret.items:
-        mgr_ips.append(i.status.pod_ip)
-    return mgr_ips
+    return [i.status.pod_ip for i in ret.items]
 
 
 def get_self_host_id():
@@ -1423,7 +1406,7 @@ def wait_scheduling_failure(client, volume_name):
     :param volume_name: The name of the volume.
     """
     scheduling_failure = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         v = client.by_id_volume(volume_name)
         if v.conditions.scheduled.status == "False" and \
                 v.conditions.scheduled.reason == \
@@ -1437,8 +1420,8 @@ def wait_scheduling_failure(client, volume_name):
 
 def wait_for_device_login(dest_path, name):
     dev = ""
-    for i in range(RETRY_COUNTS):
-        for j in range(RETRY_COMMAND_COUNT):
+    for _ in range(RETRY_COUNTS):
+        for _ in range(RETRY_COMMAND_COUNT):
             files = []
             try:
                 files = os.listdir(dest_path)
@@ -1456,7 +1439,7 @@ def wait_for_device_login(dest_path, name):
 
 def wait_for_replica_directory():
     found = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         if os.path.exists(DEFAULT_REPLICA_DIRECTORY):
             found = True
             break
@@ -1465,13 +1448,9 @@ def wait_for_replica_directory():
 
 
 def wait_for_volume_creation(client, name):
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volumes = client.list_volume()
-        found = False
-        for volume in volumes:
-            if volume.name == name:
-                found = True
-                break
+        found = any(volume.name == name for volume in volumes)
         if found:
             break
         time.sleep(RETRY_INTERVAL)
@@ -1479,7 +1458,7 @@ def wait_for_volume_creation(client, name):
 
 
 def wait_for_volume_endpoint(client, name):
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         v = client.by_id_volume(name)
         engine = get_volume_engine(v)
         if engine.endpoint != "":
@@ -1547,7 +1526,7 @@ def wait_for_volume_faulted(client, name):
 
 def wait_for_volume_status(client, name, key, value):
     wait_for_volume_creation(client, name)
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volume = client.by_id_volume(name)
         if volume[key] == value:
             break
@@ -1557,13 +1536,9 @@ def wait_for_volume_status(client, name, key, value):
 
 
 def wait_for_volume_delete(client, name):
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volumes = client.list_volume()
-        found = False
-        for volume in volumes:
-            if volume.name == name:
-                found = True
-                break
+        found = any(volume.name == name for volume in volumes)
         if not found:
             break
         time.sleep(RETRY_INTERVAL)
@@ -1573,11 +1548,7 @@ def wait_for_volume_delete(client, name):
 def wait_for_backup_volume_delete(client, name):
     for _ in range(RETRY_BACKUP_COUNTS):
         bvs = client.list_backupVolume()
-        found = False
-        for bv in bvs:
-            if bv.name == name:
-                found = True
-                break
+        found = any(bv.name == name for bv in bvs)
         if not found:
             break
         time.sleep(RETRY_BACKUP_INTERVAL)
@@ -1586,7 +1557,7 @@ def wait_for_backup_volume_delete(client, name):
 
 def wait_for_volume_current_image(client, name, image):
     wait_for_volume_creation(client, name)
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volume = client.by_id_volume(name)
         if volume.currentImage == image:
             break
@@ -1597,7 +1568,7 @@ def wait_for_volume_current_image(client, name, image):
 
 def wait_for_volume_replica_count(client, name, count):
     wait_for_volume_creation(client, name)
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volume = client.by_id_volume(name)
         if len(volume.replicas) == count:
             break
@@ -1608,7 +1579,7 @@ def wait_for_volume_replica_count(client, name, count):
 
 def wait_for_volume_replica_auto_balance_update(client, volume_name, value):
     wait_for_volume_creation(client, volume_name)
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volume = client.by_id_volume(volume_name)
         if volume.replicaAutoBalance == value:
             break
@@ -1656,7 +1627,7 @@ def wait_for_volume_replicas_mode(client, volname, mode,
 def wait_for_volume_replicas_running_on_hosts(client, volume_name, host_ids,
                                               replica_balanced):
     hosts = list(host_ids)
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         hosts = list(host_ids)
         num_running = 0
         volume = client.by_id_volume(volume_name)
@@ -1693,7 +1664,7 @@ def wait_for_snapshot_purge(client, volume_name, *snaps):
     completed = 0
     last_purge_progress = {}
     purge_status = {}
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         completed = 0
         v = client.by_id_volume(volume_name)
         purge_status = v.purgeStatus
@@ -1736,13 +1707,9 @@ def wait_for_snapshot_purge(client, volume_name, *snaps):
 
 
 def wait_for_engine_image_creation(client, image_name):
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         images = client.list_engine_image()
-        found = False
-        for img in images:
-            if img.name == image_name:
-                found = True
-                break
+        found = any(img.name == image_name for img in images)
         if found:
             break
         time.sleep(RETRY_INTERVAL)
@@ -1751,7 +1718,7 @@ def wait_for_engine_image_creation(client, image_name):
 
 def wait_for_engine_image_state(client, image_name, state):
     wait_for_engine_image_creation(client, image_name)
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         image = client.by_id_engine_image(image_name)
         if image.state == state:
             break
@@ -1762,7 +1729,7 @@ def wait_for_engine_image_state(client, image_name, state):
 
 def wait_for_engine_image_ref_count(client, image_name, count):
     wait_for_engine_image_creation(client, image_name)
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         image = client.by_id_engine_image(image_name)
         if image.refCount == count:
             break
@@ -1779,11 +1746,8 @@ def json_string_go_to_python(str):
 
 
 def delete_replica_processes(client, api, volname):
-    replica_map = {}
     volume = client.by_id_volume(volname)
-    for r in volume.replicas:
-        replica_map[r.instanceManagerName] = r.name
-
+    replica_map = {r.instanceManagerName: r.name for r in volume.replicas}
     for rm_name, r_name in replica_map.items():
         delete_command = 'longhorn-instance-manager process delete ' + \
                          '--name ' + r_name
@@ -1821,7 +1785,7 @@ def exec_instance_manager(api, im_name, cmd):
 
 def wait_for_replica_failed(client, volname, replica_name):
     failed = True
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         time.sleep(RETRY_INTERVAL)
         failed = True
         volume = client.by_id_volume(volname)
@@ -1844,7 +1808,7 @@ def wait_for_replica_failed(client, volname, replica_name):
 
 def wait_for_replica_running(client, volname, replica_name):
     is_running = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volume = client.by_id_volume(volname)
         for r in volume.replicas:
             if r['name'] != replica_name:
@@ -1873,7 +1837,7 @@ def wait_for_replica_scheduled(client, volume_name, to_nodes,
 
         scheduled = 0
         unexpect_fail = expect_fail
-        expect_nodes = [n for n in to_nodes]
+        expect_nodes = list(to_nodes)
         for r in volume.replicas:
             try:
                 assert r.hostId in expect_nodes
@@ -1928,9 +1892,9 @@ def csi_pvc_name(request):
 
 
 def generate_volume_name():
-    return VOLUME_NAME + "-" + \
-        ''.join(random.choice(string.ascii_lowercase + string.digits)
-                for _ in range(6))
+    return f"{VOLUME_NAME}-" + ''.join(
+        random.choice(string.ascii_lowercase + string.digits) for _ in range(6)
+    )
 
 
 @pytest.fixture
@@ -1939,9 +1903,9 @@ def sts_name(request):
 
 
 def generate_sts_name():
-    return STATEFULSET_NAME + "-" + \
-        ''.join(random.choice(string.ascii_lowercase + string.digits)
-                for _ in range(6))
+    return f"{STATEFULSET_NAME}-" + ''.join(
+        random.choice(string.ascii_lowercase + string.digits) for _ in range(6)
+    )
 
 
 def get_default_engine_image(client):
@@ -2087,9 +2051,15 @@ def get_iscsi_lun(iscsi):
 
 def exec_nsenter(cmd):
     dockerd_pid = find_dockerd_pid() or "1"
-    exec_cmd = ["nsenter", "--mount=/host/proc/{}/ns/mnt".format(dockerd_pid),
-                "--net=/host/proc/{}/ns/net".format(dockerd_pid),
-                "bash", "-c", cmd]
+    exec_cmd = [
+        "nsenter",
+        f"--mount=/host/proc/{dockerd_pid}/ns/mnt",
+        f"--net=/host/proc/{dockerd_pid}/ns/net",
+        "bash",
+        "-c",
+        cmd,
+    ]
+
     return subprocess.check_output(exec_cmd)
 
 
@@ -2099,35 +2069,34 @@ def iscsi_login(iscsi_ep):
     target = get_iscsi_target(iscsi_ep)
     lun = get_iscsi_lun(iscsi_ep)
     # discovery
-    cmd_discovery = "iscsiadm -m discovery -t st -p " + ip
+    cmd_discovery = f"iscsiadm -m discovery -t st -p {ip}"
     exec_nsenter(cmd_discovery)
     # login
-    cmd_login = "iscsiadm -m node -T " + target + " -p " + ip + " --login"
+    cmd_login = f"iscsiadm -m node -T {target} -p {ip} --login"
     exec_nsenter(cmd_login)
-    blk_name = "ip-%s:%s-iscsi-%s-lun-%s" % (ip, port, target, lun)
+    blk_name = f"ip-{ip}:{port}-iscsi-{target}-lun-{lun}"
     wait_for_device_login(ISCSI_DEV_PATH, blk_name)
-    dev = os.path.realpath(ISCSI_DEV_PATH + "/" + blk_name)
-    return dev
+    return os.path.realpath(f"{ISCSI_DEV_PATH}/{blk_name}")
 
 
 def iscsi_logout(iscsi_ep):
     ip = get_iscsi_ip(iscsi_ep)
     target = get_iscsi_target(iscsi_ep)
-    cmd_logout = "iscsiadm -m node -T " + target + " -p " + ip + " --logout"
+    cmd_logout = f"iscsiadm -m node -T {target} -p {ip} --logout"
     exec_nsenter(cmd_logout)
-    cmd_rm_discovery = "iscsiadm -m discovery -p " + ip + " -o delete"
+    cmd_rm_discovery = f"iscsiadm -m discovery -p {ip} -o delete"
     exec_nsenter(cmd_rm_discovery)
 
 
 def get_process_info(p_path):
     info = {}
     with open(p_path) as file:
-        for line in file.readlines():
-            if 'Name:\t' == line[0:len('Name:\t')]:
+        for line in file:
+            if line[: len('Name:\t')] == 'Name:\t':
                 info["Name"] = line[len("Name:"):].strip()
-            if 'Pid:\t' == line[0:len('Pid:\t')]:
+            if line[: len('Pid:\t')] == 'Pid:\t':
                 info["Pid"] = line[len("Pid:"):].strip()
-            if 'PPid:\t' == line[0:len('PPid:\t')]:
+            if line[: len('PPid:\t')] == 'PPid:\t':
                 info["PPid"] = line[len("PPid:"):].strip()
     if "Name" not in info or "Pid" not in info or "PPid" not in info:
         return
@@ -2140,12 +2109,10 @@ def find_self():
 
 def find_ancestor_process_by_name(ancestor_name):
     p = find_self()
-    while True:
-        if not p or p["Pid"] == "1":
-            break
+    while not (not p or p["Pid"] == "1"):
         if p["Name"] == ancestor_name:
             return p["Pid"]
-        p = get_process_info("/host/proc/{}/status".format(p["PPid"]))
+        p = get_process_info(f'/host/proc/{p["PPid"]}/status')
     return
 
 
@@ -2154,7 +2121,7 @@ def find_dockerd_pid():
 
 
 def generate_random_pos(size, used={}):
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         pos = 0
         if int(SIZE) != size:
             pos = random.randrange(0, int(SIZE)-size, 1)
@@ -2221,7 +2188,7 @@ def cleanup_host_disk(vol_name):
 
 def wait_for_volume_condition_scheduled(client, name, key, value):
     wait_for_volume_creation(client, name)
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volume = client.by_id_volume(name)
         conditions = volume.conditions
         if conditions is not None and \
@@ -2238,7 +2205,7 @@ def wait_for_volume_condition_scheduled(client, name, key, value):
 
 def wait_for_volume_condition_restore(client, name, key, value):
     wait_for_volume_creation(client, name)
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volume = client.by_id_volume(name)
         conditions = volume.conditions
         if conditions is not None and \
@@ -2290,7 +2257,7 @@ def get_host_disk_size(disk):
 def wait_for_disk_status(client, node_name, disk_name, key, value):
     # use wait_for_disk_storage_available to check storageAvailable
     assert key != "storageAvailable"
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         node = client.by_id_node(node_name)
         disks = node.disks
         if len(disks) > 0 and \
@@ -2305,7 +2272,7 @@ def wait_for_disk_status(client, node_name, disk_name, key, value):
 
 
 def wait_for_disk_storage_available(client, node_name, disk_name, disk_path):
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         node = client.by_id_node(node_name)
         disks = node.disks
         if len(disks) > 0 and disk_name in disks:
@@ -2321,7 +2288,7 @@ def wait_for_disk_storage_available(client, node_name, disk_name, disk_path):
 
 def wait_for_disk_uuid(client, node_name, uuid):
     found = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         node = client.by_id_node(node_name)
         disks = node.disks
         for name in disks:
@@ -2336,7 +2303,7 @@ def wait_for_disk_uuid(client, node_name, uuid):
 
 
 def wait_for_disk_conditions(client, node_name, disk_name, key, value):
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         node = client.by_id_node(node_name)
         disks = node.disks
         disk = disks[disk_name]
@@ -2349,7 +2316,7 @@ def wait_for_disk_conditions(client, node_name, disk_name, key, value):
 
 
 def wait_for_node_update(client, name, key, value):
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         node = client.by_id_node(name)
         if str(node[key]) == str(value):
             break
@@ -2359,15 +2326,11 @@ def wait_for_node_update(client, name, key, value):
 
 
 def wait_for_disk_update(client, name, disk_num):
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         node = client.by_id_node(name)
         if len(node.disks) == disk_num:
-            allUpdated = True
             disks = node.disks
-            for d in disks:
-                if disks[d]["diskUUID"] == "":
-                    allUpdated = False
-                    break
+            allUpdated = all(disks[d]["diskUUID"] != "" for d in disks)
             if allUpdated:
                 break
         time.sleep(RETRY_INTERVAL)
@@ -2377,7 +2340,7 @@ def wait_for_disk_update(client, name, disk_num):
 
 def wait_for_node_tag_update(client, name, tags):
     updated = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         node = client.by_id_node(name)
         if not tags and not node.tags:
             updated = True
@@ -2409,8 +2372,7 @@ def get_volume_engine(v):
 
 
 def get_volume_endpoint(v):
-    endpoint = check_volume_endpoint(v)
-    return endpoint
+    return check_volume_endpoint(v)
 
 
 def check_volume_endpoint(v):
@@ -2418,13 +2380,12 @@ def check_volume_endpoint(v):
     endpoint = engine.endpoint
     if v.disableFrontend:
         assert endpoint == ""
+    elif v.frontend == VOLUME_FRONTEND_BLOCKDEV:
+        assert endpoint == os.path.join(DEV_PATH, v.name)
+    elif v.frontend == VOLUME_FRONTEND_ISCSI:
+        assert endpoint.startswith("iscsi://")
     else:
-        if v.frontend == VOLUME_FRONTEND_BLOCKDEV:
-            assert endpoint == os.path.join(DEV_PATH, v.name)
-        elif v.frontend == VOLUME_FRONTEND_ISCSI:
-            assert endpoint.startswith("iscsi://")
-        else:
-            raise Exception("Unexpected volume frontend:", v.frontend)
+        raise Exception("Unexpected volume frontend:", v.frontend)
     return endpoint
 
 
@@ -2465,7 +2426,7 @@ def wait_pod_auto_attach_after_first_backup_completion(
             wait_for_volume_attached(client, vol.name)
             break
 
-        label_selector = "name=" + label_name
+        label_selector = f"name={label_name}"
         pods = core_api.list_namespaced_pod(namespace="default",
                                             label_selector=label_selector)
         for pod in pods.items:
@@ -2500,7 +2461,7 @@ def wait_for_backup_to_start(client, volume_name, snapshot_name=None,
 def wait_for_backup_state(client, volume_name, predicate,
                           retry_count=RETRY_BACKUP_COUNTS):
     completed = False
-    for i in range(retry_count):
+    for _ in range(retry_count):
         v = client.by_id_volume(volume_name)
         for b in v.backupStatus:
             if predicate(b):
@@ -2516,7 +2477,7 @@ def wait_for_backup_state(client, volume_name, predicate,
 def monitor_restore_progress(client, volume_name):
     completed = 0
     rs = {}
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         completed = 0
         v = client.by_id_volume(volume_name)
         rs = v.restoreStatus
@@ -2534,7 +2495,7 @@ def monitor_restore_progress(client, volume_name):
 
 def wait_for_volume_migration_ready(client, volume_name):
     ready = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         v = client.by_id_volume(volume_name)
         engines = v.controllers
         ready = len(engines) == 2
@@ -2549,7 +2510,7 @@ def wait_for_volume_migration_ready(client, volume_name):
 
 def wait_for_volume_migration_node(client, volume_name, node_id):
     ready = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         v = client.by_id_volume(volume_name)
         engines = v.controllers
         replicas = v.replicas
@@ -2571,10 +2532,7 @@ def get_random_client(clients):
 
 
 def get_update_disks(disks):
-    update_disk = {}
-    for key, disk in iter(disks.items()):
-        update_disk[key] = disk
-    return update_disk
+    return dict(iter(disks.items()))
 
 
 def reset_node(client):
@@ -2608,7 +2566,7 @@ def wait_longhorn_node_zone_reset(client):
     node_names = map(lambda node: node.name, lh_nodes)
 
     for node_name in node_names:
-        for j in range(RETRY_COUNTS):
+        for _ in range(RETRY_COUNTS):
             lh_node = client.by_id_node(node_name)
             if lh_node.zone == '':
                 break
@@ -2639,12 +2597,11 @@ def get_k8s_zone_label():
 
     k8s_ver_minor = k8s_ver_data.minor
 
-    if int(k8s_ver_minor) >= 17:
-        k8s_zone_label = K8S_ZONE_LABEL
-    else:
-        k8s_zone_label = DEPRECATED_K8S_ZONE_LABEL
-
-    return k8s_zone_label
+    return (
+        K8S_ZONE_LABEL
+        if int(k8s_ver_minor) >= 17
+        else DEPRECATED_K8S_ZONE_LABEL
+    )
 
 
 def cleanup_test_disks(client):
@@ -2670,21 +2627,20 @@ def cleanup_test_disks(client):
     except Exception as e:
         print("\nException when update node disks", node)
         print(e)
-        pass
-
     # delete test disks
     disks = node.disks
-    update_disks = {}
-    for name, disk in iter(disks.items()):
-        if disk.allowScheduling:
-            update_disks[name] = disk
+    update_disks = {
+        name: disk
+        for name, disk in iter(disks.items())
+        if disk.allowScheduling
+    }
+
     try:
         node.diskUpdate(disks=update_disks)
         wait_for_disk_update(client, host_id, len(update_disks))
     except Exception as e:
         print("\nException when delete node test disks", node)
         print(e)
-        pass
     # cleanup host disks
     for del_dir in del_dirs:
         try:
@@ -2692,7 +2648,6 @@ def cleanup_test_disks(client):
         except Exception as e:
             print("\nException when cleanup host disk", del_dir)
             print(e)
-            pass
 
 
 def reset_disks_for_all_nodes(client):  # NOQA
@@ -2769,7 +2724,7 @@ def reset_engine_image(client):
     core_api = get_core_api_client()
     ready = False
 
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         ready = True
         ei_list = client.list_engine_image().data
         for ei in ei_list:
@@ -2792,7 +2747,7 @@ def wait_for_all_instance_manager_running(client):
 
     nodes = client.list_node()
 
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         instance_managers = client.list_instance_manager()
         node_to_engine_manager_map, node_to_replica_manager_map = {}, {}
         for im in instance_managers:
@@ -2807,17 +2762,17 @@ def wait_for_all_instance_manager_running(client):
             time.sleep(RETRY_INTERVAL)
             continue
 
-        for _, im in node_to_engine_manager_map.items():
+        for im in node_to_engine_manager_map.values():
             wait_for_instance_manager_desire_state(client, core_api,
                                                    im.name, "Running", True)
-        for _, im in node_to_replica_manager_map.items():
+        for im in node_to_replica_manager_map.values():
             wait_for_instance_manager_desire_state(client, core_api,
                                                    im.name, "Running", True)
         break
 
 
 def wait_for_node_mountpropagation_condition(client, name):
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         node = client.by_id_node(name)
         conditions = {}
         if "conditions" in node.keys():
@@ -2835,7 +2790,7 @@ def wait_for_node_mountpropagation_condition(client, name):
 
 
 def wait_for_node_schedulable_condition(client, name):
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         node = client.by_id_node(name)
         conditions = {}
         if "conditions" in node.keys():
@@ -2887,7 +2842,7 @@ def wait_for_backup_volume(client, vol_name, backing_image=""):
                     and bv.backingImageChecksum != "":
                 break
         time.sleep(RETRY_BACKUP_INTERVAL)
-    assert bv is not None, "failed to find backup volume " + vol_name
+    assert bv is not None, f"failed to find backup volume {vol_name}"
 
 
 def wait_for_backup_target_available(client, available):
@@ -2931,8 +2886,9 @@ def find_backup(client, vol_name, snap_name):
                 if b.snapshotName == snap_name:
                     return bv, b
         time.sleep(RETRY_BACKUP_INTERVAL)
-    assert False, "failed to find backup for snapshot " + snap_name + \
-                  " for volume " + vol_name
+    assert False, (
+        f"failed to find backup for snapshot {snap_name}" + " for volume "
+    ) + vol_name
 
 
 def check_longhorn(core_api):
@@ -3017,7 +2973,7 @@ def check_csi(core_api):
 
     assert using_csi != CSI_UNKNOWN
 
-    return True if using_csi == CSI_TRUE else False
+    return using_csi == CSI_TRUE
 
 
 def check_csi_expansion(core_api):
@@ -3069,7 +3025,7 @@ def create_and_wait_statefulset(statefulset_manifest):
 def wait_statefulset(statefulset_manifest):
     api = get_apps_api_client()
     replicas = statefulset_manifest['spec']['replicas']
-    for i in range(DEFAULT_STATEFULSET_TIMEOUT):
+    for _ in range(DEFAULT_STATEFULSET_TIMEOUT):
         s_set = api.read_namespaced_stateful_set(
             name=statefulset_manifest['metadata']['name'],
             namespace='default')
@@ -3105,12 +3061,8 @@ def cleanup_storage_class():
 
     ok = False
     for _ in range(RETRY_COUNTS):
-        ok = True
         ret = api.list_storage_class()
-        for sc in ret.items:
-            if sc.metadata.name not in skip_sc_deletes:
-                ok = False
-                break
+        ok = all(sc.metadata.name in skip_sc_deletes for sc in ret.items)
         if ok:
             break
         time.sleep(RETRY_INTERVAL)
@@ -3139,44 +3091,39 @@ def update_statefulset_manifests(ss_manifest, sc_manifest, name):
 
 def check_volume_existence(client, volume_name):
     volumes = client.list_volume()
-    for volume in volumes:
-        if volume.name == volume_name:
-            return True
-    return False
+    return any(volume.name == volume_name for volume in volumes)
 
 
 def check_pod_existence(api, pod_name, namespace="default"):
     pods = api.list_namespaced_pod(namespace)
-    for pod in pods.items:
-        if pod.metadata.name == pod_name and \
-                not pod.metadata.deletion_timestamp:
-            return True
-    return False
+    return any(
+        pod.metadata.name == pod_name and not pod.metadata.deletion_timestamp
+        for pod in pods.items
+    )
 
 
 def check_pvc_existence(api, pvc_name, namespace="default"):
     pvcs = api.list_namespaced_persistent_volume_claim(namespace)
-    for pvc in pvcs.items:
-        if pvc.metadata.name == pvc_name and not \
-                pvc.metadata.deletion_timestamp:
-            return True
-    return False
+    return any(
+        pvc.metadata.name == pvc_name and not pvc.metadata.deletion_timestamp
+        for pvc in pvcs.items
+    )
 
 
 def check_pv_existence(api, pv_name):
     pvs = api.list_persistent_volume()
-    for pv in pvs.items:
-        if pv.metadata.name == pv_name and not pv.metadata.deletion_timestamp:
-            return True
-    return False
+    return any(
+        pv.metadata.name == pv_name and not pv.metadata.deletion_timestamp
+        for pv in pvs.items
+    )
 
 
 def check_statefulset_existence(api, ss_name, namespace="default"):
     ss_list = api.list_namespaced_stateful_set(namespace)
-    for ss in ss_list.items:
-        if ss.metadata.name == ss_name and not ss.metadata.deletion_timestamp:
-            return True
-    return False
+    return any(
+        ss.metadata.name == ss_name and not ss.metadata.deletion_timestamp
+        for ss in ss_list.items
+    )
 
 
 def delete_and_wait_pvc(api, pvc_name, retry_counts=RETRY_COUNTS):
@@ -3192,12 +3139,8 @@ def delete_and_wait_pvc(api, pvc_name, retry_counts=RETRY_COUNTS):
 
 def wait_delete_pvc(api, pvc_name, retry_counts=RETRY_COUNTS):
     for _ in range(retry_counts):
-        found = False
         ret = api.list_namespaced_persistent_volume_claim(namespace='default')
-        for item in ret.items:
-            if item.metadata.name == pvc_name:
-                found = True
-                break
+        found = any(item.metadata.name == pvc_name for item in ret.items)
         if not found:
             break
         time.sleep(RETRY_INTERVAL)
@@ -3215,7 +3158,7 @@ def delete_and_wait_pv(api, pv_name):
 
 
 def wait_delete_pv(api, pv_name):
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         found = False
         pvs = api.list_persistent_volume()
         for item in pvs.items:
@@ -3236,7 +3179,7 @@ def wait_delete_pv(api, pv_name):
 
 
 def wait_volume_kubernetes_status(client, volume_name, expect_ks):
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         expected = True
         volume = client.by_id_volume(volume_name)
         ks = volume.kubernetesStatus
@@ -3248,10 +3191,9 @@ def wait_volume_kubernetes_status(client, volume_name, expect_ks):
                    (v == '' and ks[k] != ''):
                     expected = False
                     break
-            else:
-                if ks[k] != v:
-                    expected = False
-                    break
+            elif ks[k] != v:
+                expected = False
+                break
         if expected:
             break
         time.sleep(RETRY_INTERVAL)
@@ -3260,7 +3202,7 @@ def wait_volume_kubernetes_status(client, volume_name, expect_ks):
 
 def create_pv_for_volume(client, core_api, volume, pv_name, fs_type="ext4"):
     volume.pvCreate(pvName=pv_name, fsType=fs_type)
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         if check_pv_existence(core_api, pv_name):
             break
         time.sleep(RETRY_INTERVAL)
@@ -3278,7 +3220,7 @@ def create_pv_for_volume(client, core_api, volume, pv_name, fs_type="ext4"):
 
 def create_pvc_for_volume(client, core_api, volume, pvc_name):
     volume.pvcCreate(namespace="default", pvcName=pvc_name)
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         if check_pvc_existence(core_api, pvc_name):
             break
         time.sleep(RETRY_INTERVAL)
@@ -3296,7 +3238,7 @@ def activate_standby_volume(client, volume_name,
                             frontend=VOLUME_FRONTEND_BLOCKDEV):
     volume = client.by_id_volume(volume_name)
     assert volume.standby is True
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volume = client.by_id_volume(volume_name)
         engines = volume.controllers
         if len(engines) != 1 or \
@@ -3328,7 +3270,7 @@ def activate_standby_volume(client, volume_name,
 
 
 def check_volume_last_backup(client, volume_name, last_backup):
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volume = client.by_id_volume(volume_name)
         if volume.lastBackup == last_backup:
             break
@@ -3338,44 +3280,28 @@ def check_volume_last_backup(client, volume_name, last_backup):
 
 
 def generate_pod_with_pvc_manifest(pod_name, pvc_name):
-    pod_manifest = {
+    return {
         "apiVersion": "v1",
         "kind": "Pod",
-        "metadata": {
-           "name": pod_name,
-           "namespace": "default"
-        },
+        "metadata": {"name": pod_name, "namespace": "default"},
         "spec": {
-           "containers": [
-              {
-                 "name": "volume-test",
-                 "image": "nginx:stable-alpine",
-                 "imagePullPolicy": "IfNotPresent",
-                 "volumeMounts": [
-                    {
-                       "name": "volv",
-                       "mountPath": "/data"
-                    }
-                 ],
-                 "ports": [
-                    {
-                       "containerPort": 80
-                    }
-                 ]
-              }
-           ],
-           "volumes": [
-              {
-                 "name": "volv",
-                 "persistentVolumeClaim": {
-                    "claimName": pvc_name
-                 }
-              }
-           ]
-        }
+            "containers": [
+                {
+                    "name": "volume-test",
+                    "image": "nginx:stable-alpine",
+                    "imagePullPolicy": "IfNotPresent",
+                    "volumeMounts": [{"name": "volv", "mountPath": "/data"}],
+                    "ports": [{"containerPort": 80}],
+                }
+            ],
+            "volumes": [
+                {
+                    "name": "volv",
+                    "persistentVolumeClaim": {"claimName": pvc_name},
+                }
+            ],
+        },
     }
-
-    return pod_manifest
 
 
 def delete_and_wait_volume_attachment(storage_api, volume_attachment_name):
@@ -3390,13 +3316,9 @@ def delete_and_wait_volume_attachment(storage_api, volume_attachment_name):
 
 
 def wait_delete_volume_attachment(storage_api, volume_attachment_name):
-    for i in range(RETRY_COUNTS):
-        found = False
+    for _ in range(RETRY_COUNTS):
         ret = storage_api.list_volume_attachment()
-        for item in ret.items:
-            if item.metadata.name == volume_attachment_name:
-                found = True
-                break
+        found = any(item.metadata.name == volume_attachment_name for item in ret.items)
         if not found:
             break
         time.sleep(RETRY_INTERVAL)
@@ -3406,15 +3328,10 @@ def wait_delete_volume_attachment(storage_api, volume_attachment_name):
 def wait_for_engine_image_deletion(client, core_api, engine_image_name):
     deleted = False
 
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         time.sleep(RETRY_INTERVAL)
-        deleted = True
-
         ei_list = client.list_engine_image().data
-        for ei in ei_list:
-            if ei.name == engine_image_name:
-                deleted = False
-                break
+        deleted = all(ei.name != engine_image_name for ei in ei_list)
         if not deleted:
             continue
 
@@ -3438,7 +3355,7 @@ def create_snapshot(longhorn_api_client, volume_name):
     snap_name = snap.name
 
     snapshot_created = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         snapshots = volume.snapshotList(volume=volume_name)
 
         for vs in snapshots.data:
@@ -3456,10 +3373,7 @@ def create_snapshot(longhorn_api_client, volume_name):
 def wait_for_snapshot_count(volume, number, retry_counts=120):
     ok = False
     for _ in range(retry_counts):
-        count = 0
-        for snapshot in volume.snapshotList():
-            if snapshot.removed is False:
-                count += 1
+        count = sum(snapshot.removed is False for snapshot in volume.snapshotList())
         if count == number:
             ok = True
             break
@@ -3469,7 +3383,7 @@ def wait_for_snapshot_count(volume, number, retry_counts=120):
 
 def wait_and_get_pv_for_pvc(api, pvc_name):
     found = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         pvs = api.list_persistent_volume()
         for item in pvs.items:
             if item.spec.claim_ref.name == pvc_name:
@@ -3486,7 +3400,7 @@ def wait_and_get_pv_for_pvc(api, pvc_name):
 
 def wait_for_volume_expansion(longhorn_api_client, volume_name):
     complete = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volume = longhorn_api_client.by_id_volume(volume_name)
         engine = get_volume_engine(volume)
         if engine.size == volume.size and volume.state == "detached":
@@ -3509,7 +3423,7 @@ def check_block_device_size(volume, size):
 
 def wait_for_dr_volume_expansion(longhorn_api_client, volume_name, size_str):
     complete = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volume = longhorn_api_client.by_id_volume(volume_name)
         if volume.size == size_str:
             engine = get_volume_engine(volume)
@@ -3525,7 +3439,7 @@ def expand_and_wait_for_pvc(api, pvc):
     api.patch_namespaced_persistent_volume_claim(
         pvc_name, 'default', pvc)
     complete = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         claim = api.read_namespaced_persistent_volume_claim(
             name=pvc_name, namespace='default')
         if claim.spec.resources.requests['storage'] ==\
@@ -3580,7 +3494,7 @@ def fail_replica_expansion(client, api, volname, size, replicas=None):
 
 def wait_for_expansion_failure(client, volume_name, last_failed_at=""):
     failed = False
-    for i in range(30):
+    for _ in range(30):
         volume = client.by_id_volume(volume_name)
         engine = get_volume_engine(volume)
         if engine.lastExpansionFailedAt != last_failed_at:
@@ -3593,17 +3507,17 @@ def wait_for_expansion_failure(client, volume_name, last_failed_at=""):
 def wait_for_rebuild_complete(client, volume_name):
     completed = 0
     rebuild_statuses = {}
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         completed = 0
         v = client.by_id_volume(volume_name)
         rebuild_statuses = v.rebuildStatus
         for status in rebuild_statuses:
-            if status.state == "complete":
-                assert status.progress == 100
+            if status.state == "":
                 assert not status.error
                 assert not status.isRebuilding
                 completed += 1
-            elif status.state == "":
+            elif status.state == "complete":
+                assert status.progress == 100
                 assert not status.error
                 assert not status.isRebuilding
                 completed += 1
@@ -3621,7 +3535,7 @@ def wait_for_rebuild_complete(client, volume_name):
 
 def wait_for_rebuild_start(client, volume_name):
     started = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         v = client.by_id_volume(volume_name)
         rebuild_statuses = v.rebuildStatus
         for status in rebuild_statuses:
@@ -3645,7 +3559,7 @@ def wait_for_volume_restoration_completed(client, name):
 
 def wait_for_backup_restore_completed(client, name, backup_name):
     complete = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         v = client.by_id_volume(name)
         if v.controllers and len(v.controllers) != 0 and \
                 v.controllers[0].lastRestoredBackup == backup_name:
@@ -3660,7 +3574,7 @@ def wait_for_volume_restoration_start(client, volume_name, backup_name,
     wait_for_volume_status(client, volume_name,
                            VOLUME_FIELD_STATE, VOLUME_STATE_ATTACHED)
     started = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         volume = client.by_id_volume(volume_name)
         for status in volume.restoreStatus:
             if status.state == "in_progress" and \
@@ -3747,7 +3661,7 @@ def make_deployment_with_pvc(request):
 
 def wait_deployment_replica_ready(apps_api, deployment_name,
                                   desired_replica_count, namespace='default'):  # NOQA
-    for i in range(DEFAULT_DEPLOYMENT_TIMEOUT):
+    for _ in range(DEFAULT_DEPLOYMENT_TIMEOUT):
         deployment = apps_api.read_namespaced_deployment(
             name=deployment_name,
             namespace=namespace)

@@ -615,22 +615,21 @@ def restore_from_backup_after_backup_deletes(super_client, client,
         if not is_root:
             mount_data_dir(vm_host, port)
             dir = DATA_DIR
-        for i in range(0, snapshot_backup_index):
+        for i in range(snapshot_backup_index):
             file = snapshots1[i]["filename"]
             content = snapshots1[i]["content"]
-            assert check_if_file_exists(vm_host, port, dir + "/" + file)
+            assert check_if_file_exists(vm_host, port, f"{dir}/{file}")
             assert read_data(vm_host, port, dir, file) == content
         if snapshot_backup_index < len(snapshots1):
             for i in range(snapshot_backup_index, len(snapshots1)):
                 file = snapshots1[i]["filename"]
-                assert not check_if_file_exists(
-                    vm_host, port, dir + "/" + file)
+                assert not check_if_file_exists(vm_host, port, f"{dir}/{file}")
 
         # Check for non existence of files that was created after the
         # second backup
         for snapshot in snapshots3:
             file = snapshot["filename"]
-            assert not check_if_file_exists(vm_host, port, dir + "/" + file)
+            assert not check_if_file_exists(vm_host, port, f"{dir}/{file}")
     return env, service, vms
 
 
@@ -718,7 +717,7 @@ def test_multiple_service_deployment(client):
     if health_check_on is not None:
         launch_config["healthCheck"] = health_check
     services = []
-    for i in range(0, 10):
+    for _ in range(10):
         service = create_svc(client, env, launch_config, scale,
                              service_name="test")
         service = client.wait_success(service)

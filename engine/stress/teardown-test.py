@@ -80,19 +80,27 @@ def writeat_direct(dev, offset, data):
     return ret
 
 def write_data(i, pattern):
-  for page in xrange(0, NUM_PAGES):
-    writeat_direct("/dev/longhorn/vol" + str(i), page * PAGE_SIZE, str(chr(pattern))*PAGE_SIZE)
+    for page in xrange(0, NUM_PAGES):
+        writeat_direct(
+            f"/dev/longhorn/vol{str(i)}",
+            page * PAGE_SIZE,
+            chr(pattern) * PAGE_SIZE,
+        )
 
 def check_data(i, pattern):
-  for page in xrange(0, NUM_PAGES):
-    data = readat_direct("/dev/longhorn/vol" + str(i), page * PAGE_SIZE, PAGE_SIZE)
-    assert ord(data[0]) == pattern
+    for page in xrange(0, NUM_PAGES):
+        data = readat_direct(f"/dev/longhorn/vol{str(i)}", page * PAGE_SIZE, PAGE_SIZE)
+        assert ord(data[0]) == pattern
 
 def create_snapshot(controller):
-  return subprocess.check_output(("docker exec " + controller + " launch snapshot create").split()).rstrip()
+    return subprocess.check_output(
+        f"docker exec {controller} launch snapshot create".split()
+    ).rstrip()
 
 def revert_snapshot(snap, controller):
-  subprocess.check_call("docker exec " + controller + " launch snapshot revert " + snap, shell = True)
+    subprocess.check_call(
+        f"docker exec {controller} launch snapshot revert {snap}", shell=True
+    )
 
 def wait_for_dev_ready(i, iteration, controller):
   dev = "/dev/longhorn/vol" + str(i)

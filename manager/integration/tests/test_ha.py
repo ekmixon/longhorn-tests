@@ -113,11 +113,10 @@ def ha_rebuild_replica_test(client, volname):   # NOQA
 
     # wait until we saw a replica starts rebuilding
     new_replica_found = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         v = client.by_id_volume(volname)
         for r in v.replicas:
-            if r.name != replica0.name and \
-                    r.name != replica1.name:
+            if r.name not in [replica0.name, replica1.name]:
                 new_replica_found = True
                 break
         if new_replica_found:
@@ -133,11 +132,7 @@ def ha_rebuild_replica_test(client, volname):   # NOQA
     assert volume.robustness == common.VOLUME_ROBUSTNESS_HEALTHY
     assert len(volume.replicas) >= 2
 
-    found = False
-    for replica in volume.replicas:
-        if replica.name == replica1.name:
-            found = True
-            break
+    found = any(replica.name == replica1.name for replica in volume.replicas)
     assert found
 
     check_volume_data(volume, data)
@@ -314,10 +309,7 @@ def ha_salvage_test(client, core_api, # NOQA
     volume = common.wait_for_volume_healthy(client, volume_name)
 
     assert len(volume.replicas) == 3
-    orig_replica_names = []
-    for replica in volume.replicas:
-        orig_replica_names.append(replica.name)
-
+    orig_replica_names = [replica.name for replica in volume.replicas]
     data = write_volume_random_data(volume)
 
     crash_replica_processes(client, core_api, volume_name)
@@ -356,10 +348,7 @@ def ha_salvage_test(client, core_api, # NOQA
     volume = common.wait_for_volume_healthy(client, volume_name)
 
     assert len(volume.replicas) == 3
-    orig_replica_names = []
-    for replica in volume.replicas:
-        orig_replica_names.append(replica.name)
-
+    orig_replica_names = [replica.name for replica in volume.replicas]
     data = write_volume_random_data(volume)
 
     crash_replica_processes(client, core_api, volume_name)
@@ -482,7 +471,7 @@ def test_ha_prohibit_deleting_last_replica(client, volume_name):  # NOQA
     cleanup_volume(client, volume)
 
 
-def test_ha_recovery_with_expansion(client, volume_name):   # NOQA
+def test_ha_recovery_with_expansion(client, volume_name):    # NOQA
     """
     [HA] Test recovery with volume expansion
 
@@ -522,11 +511,10 @@ def test_ha_recovery_with_expansion(client, volume_name):   # NOQA
     volume.replicaRemove(name=replica0.name)
     # wait until we saw a replica starts rebuilding
     new_replica_found = False
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         v = client.by_id_volume(volume_name)
         for r in v.replicas:
-            if r.name != replica0.name and \
-                    r.name != replica1.name:
+            if r.name not in [replica0.name, replica1.name]:
                 new_replica_found = True
                 break
         if new_replica_found:
@@ -540,11 +528,7 @@ def test_ha_recovery_with_expansion(client, volume_name):   # NOQA
     assert volume.robustness == common.VOLUME_ROBUSTNESS_HEALTHY
     assert len(volume.replicas) >= 2
 
-    found = False
-    for replica in volume.replicas:
-        if replica.name == replica1.name:
-            found = True
-            break
+    found = any(replica.name == replica1.name for replica in volume.replicas)
     assert found
 
     check_volume_data(volume, data1, False)
@@ -576,7 +560,7 @@ def wait_pod_for_remount_request(client, core_api, volume_name, pod_name, origin
     assert md5sum == original_md5sum
 
 
-def test_salvage_auto_crash_all_replicas(client, core_api, storage_class, sts_name, statefulset):  # NOQA
+def test_salvage_auto_crash_all_replicas(client, core_api, storage_class, sts_name, statefulset):    # NOQA
     """
     [HA] Test automatic salvage feature by crashing all the replicas
 
@@ -613,11 +597,7 @@ def test_salvage_auto_crash_all_replicas(client, core_api, storage_class, sts_na
     crash_replica_processes(client, core_api, vol_name, [replica0])
 
     volume = wait_for_volume_healthy(client, vol_name)
-    replicas = []
-    for r in volume.replicas:
-        if r.running is True:
-            replicas.append(r)
-
+    replicas = [r for r in volume.replicas if r.running is True]
     crash_replica_processes(client, core_api, vol_name, replicas)
 
     wait_pod_for_remount_request(client, core_api, vol_name, pod_name, md5sum)
@@ -748,7 +728,7 @@ def test_rebuild_replica_and_from_replica_on_the_same_node(client, core_api, vol
     assert original_md5sum == md5sum
 
 
-def test_rebuild_with_restoration(set_random_backupstore, client, core_api, volume_name, csi_pv, pvc, pod_make): # NOQA
+def test_rebuild_with_restoration(set_random_backupstore, client, core_api, volume_name, csi_pv, pvc, pod_make):    # NOQA
     """
     [HA] Test if the rebuild is disabled for the restoring volume
     1. Setup a random backupstore.
@@ -765,7 +745,7 @@ def test_rebuild_with_restoration(set_random_backupstore, client, core_api, volu
     11. Check md5sum of the data in the restored volume.
     12. Do cleanup.
     """
-    original_volume_name = volume_name + "-origin"
+    original_volume_name = f"{volume_name}-origin"
     data_path = "/data/test"
     original_pod_name, original_pv_name, original_pvc_name, original_md5sum = \
         prepare_pod_with_data_in_mb(
@@ -781,7 +761,7 @@ def test_rebuild_with_restoration(set_random_backupstore, client, core_api, volu
                                retry_count=600)
     bv, b = find_backup(client, original_volume_name, snap.name)
 
-    restore_volume_name = volume_name + "-restore"
+    restore_volume_name = f"{volume_name}-restore"
     client.create_volume(name=restore_volume_name, size=str(1 * Gi),
                          numberOfReplicas=3, fromBackup=b.url)
     wait_for_volume_creation(client, restore_volume_name)
@@ -794,12 +774,14 @@ def test_rebuild_with_restoration(set_random_backupstore, client, core_api, volu
 
     # Wait for the rebuild start
     running_replica_count = 0
-    for i in range(RETRY_COUNTS):
-        running_replica_count = 0
+    for _ in range(RETRY_COUNTS):
         restore_volume = client.by_id_volume(restore_volume_name)
-        for r in restore_volume.replicas:
-            if r['running'] and not r['failedAt']:
-                running_replica_count += 1
+        running_replica_count = sum(
+            1
+            for r in restore_volume.replicas
+            if r['running'] and not r['failedAt']
+        )
+
         if running_replica_count == 3:
             break
         time.sleep(RETRY_INTERVAL)
@@ -812,9 +794,9 @@ def test_rebuild_with_restoration(set_random_backupstore, client, core_api, volu
         assert restoring_replica != r.name
         assert r['failedAt'] == ""
 
-    restore_pod_name = restore_volume_name + "-pod"
-    restore_pv_name = restore_volume_name + "-pv"
-    restore_pvc_name = restore_volume_name + "-pvc"
+    restore_pod_name = f"{restore_volume_name}-pod"
+    restore_pv_name = f"{restore_volume_name}-pv"
+    restore_pvc_name = f"{restore_volume_name}-pvc"
     restore_pod = pod_make(name=restore_pod_name)
     create_pv_for_volume(client, core_api, restore_volume, restore_pv_name)
     create_pvc_for_volume(client, core_api, restore_volume, restore_pvc_name)
@@ -835,7 +817,7 @@ def test_rebuild_with_restoration(set_random_backupstore, client, core_api, volu
     backupstore_cleanup(client)
 
 
-def test_rebuild_with_inc_restoration(set_random_backupstore, client, core_api, volume_name, csi_pv, pvc, pod_make):  # NOQA
+def test_rebuild_with_inc_restoration(set_random_backupstore, client, core_api, volume_name, csi_pv, pvc, pod_make):    # NOQA
     """
     [HA] Test if the rebuild is disabled for the DR volume
     1. Setup a random backupstore.
@@ -855,7 +837,7 @@ def test_rebuild_with_inc_restoration(set_random_backupstore, client, core_api, 
     12. Check md5sum of the data in the activated volume.
     13. Do cleanup.
     """
-    std_volume_name = volume_name + "-std"
+    std_volume_name = f"{volume_name}-std"
     data_path1 = "/data/test1"
     std_pod_name, std_pv_name, std_pvc_name, std_md5sum1 = \
         prepare_pod_with_data_in_mb(
@@ -868,7 +850,7 @@ def test_rebuild_with_inc_restoration(set_random_backupstore, client, core_api, 
     wait_for_backup_completion(client, std_volume_name, snap1.name)
     bv, b1 = find_backup(client, std_volume_name, snap1.name)
 
-    dr_volume_name = volume_name + "-dr"
+    dr_volume_name = f"{volume_name}-dr"
     client.create_volume(name=dr_volume_name, size=str(1 * Gi),
                          numberOfReplicas=3, fromBackup=b1.url,
                          frontend="", standby=True)
@@ -897,12 +879,12 @@ def test_rebuild_with_inc_restoration(set_random_backupstore, client, core_api, 
 
     # Wait for the rebuild start
     running_replica_count = 0
-    for i in range(RETRY_COUNTS):
-        running_replica_count = 0
+    for _ in range(RETRY_COUNTS):
         dr_volume = client.by_id_volume(dr_volume_name)
-        for r in dr_volume.replicas:
-            if r['running'] and not r['failedAt']:
-                running_replica_count += 1
+        running_replica_count = sum(
+            1 for r in dr_volume.replicas if r['running'] and not r['failedAt']
+        )
+
         if running_replica_count == 3:
             break
         time.sleep(RETRY_INTERVAL)
@@ -915,9 +897,9 @@ def test_rebuild_with_inc_restoration(set_random_backupstore, client, core_api, 
     activate_standby_volume(client, dr_volume_name)
     wait_for_volume_detached(client, dr_volume_name)
 
-    dr_pod_name = dr_volume_name + "-pod"
-    dr_pv_name = dr_volume_name + "-pv"
-    dr_pvc_name = dr_volume_name + "-pvc"
+    dr_pod_name = f"{dr_volume_name}-pod"
+    dr_pv_name = f"{dr_volume_name}-pv"
+    dr_pvc_name = f"{dr_volume_name}-pvc"
     dr_pod = pod_make(name=dr_pod_name)
     create_pv_for_volume(client, core_api, dr_volume, dr_pv_name)
     create_pvc_for_volume(client, core_api, dr_volume, dr_pvc_name)

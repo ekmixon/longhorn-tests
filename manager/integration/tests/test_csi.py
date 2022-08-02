@@ -235,7 +235,7 @@ def backupstore_test(client, core_api, csi_pv, pvc, pod_make, pod_name, vol_name
 
 
 @pytest.mark.csi  # NOQA
-def test_csi_block_volume(client, core_api, storage_class, pvc, pod_manifest):  # NOQA
+def test_csi_block_volume(client, core_api, storage_class, pvc, pod_manifest):    # NOQA
     """
     Test CSI feature: raw block volume
 
@@ -248,7 +248,7 @@ def test_csi_block_volume(client, core_api, storage_class, pvc, pod_manifest):  
     7. Validate the data in `pod2` is consistent with `test_data`
     """
     pod_name = 'csi-block-volume-test'
-    pvc_name = pod_name + "-pvc"
+    pvc_name = f"{pod_name}-pvc"
     device_path = "/dev/longhorn/longhorn-test-blk"
 
     storage_class['reclaimPolicy'] = 'Retain'
@@ -311,7 +311,7 @@ def test_csi_block_volume(client, core_api, storage_class, pvc, pod_manifest):  
 @pytest.mark.coretest   # NOQA
 @pytest.mark.csi  # NOQA
 @pytest.mark.csi_expansion  # NOQA
-def test_csi_offline_expansion(client, core_api, storage_class, pvc, pod_manifest):  # NOQA
+def test_csi_offline_expansion(client, core_api, storage_class, pvc, pod_manifest):    # NOQA
     """
     Test CSI feature: offline expansion
 
@@ -326,7 +326,7 @@ def test_csi_offline_expansion(client, core_api, storage_class, pvc, pod_manifes
     create_storage_class(storage_class)
 
     pod_name = 'csi-offline-expand-volume-test'
-    pvc_name = pod_name + "-pvc"
+    pvc_name = f"{pod_name}-pvc"
     pvc['metadata']['name'] = pvc_name
     pvc['spec']['storageClassName'] = storage_class['metadata']['name']
     create_pvc(pvc)
@@ -458,7 +458,7 @@ def test_xfs_pv_existing_volume(client, core_api, pod_manifest):  # NOQA
 
 
 @pytest.mark.coretest  # NOQA
-def test_csi_expansion_with_replica_failure(client, core_api, storage_class, pvc, pod_manifest):  # NOQA
+def test_csi_expansion_with_replica_failure(client, core_api, storage_class, pvc, pod_manifest):    # NOQA
     """
     Test expansion success but with one replica expansion failure
 
@@ -482,7 +482,7 @@ def test_csi_expansion_with_replica_failure(client, core_api, storage_class, pvc
     create_storage_class(storage_class)
 
     pod_name = 'csi-expansion-with-replica-failure-test'
-    pvc_name = pod_name + "-pvc"
+    pvc_name = f"{pod_name}-pvc"
     pvc['metadata']['name'] = pvc_name
     pvc['spec']['storageClassName'] = storage_class['metadata']['name']
     create_pvc(pvc)
@@ -545,7 +545,7 @@ def test_csi_expansion_with_replica_failure(client, core_api, storage_class, pvc
 
 @pytest.mark.coretest
 def test_allow_volume_creation_with_degraded_availability_csi(
-        client, core_api, apps_api, make_deployment_with_pvc):  # NOQA
+        client, core_api, apps_api, make_deployment_with_pvc):    # NOQA
     """
     Test Allow Volume Creation with Degraded Availability (CSI)
 
@@ -582,13 +582,13 @@ def test_allow_volume_creation_with_degraded_availability_csi(
     vol = common.create_and_check_volume(client, generate_volume_name(),
                                          size=str(500 * Mi))
 
-    pv_name = vol.name + "-pv"
+    pv_name = f"{vol.name}-pv"
     common.create_pv_for_volume(client, core_api, vol, pv_name)
 
-    pvc_name = vol.name + "-pvc"
+    pvc_name = f"{vol.name}-pvc"
     common.create_pvc_for_volume(client, core_api, vol, pvc_name)
 
-    deployment_name = vol.name + "-dep"
+    deployment_name = f"{vol.name}-dep"
     deployment = make_deployment_with_pvc(deployment_name, pvc_name)
     deployment["spec"]["replicas"] = 3
     apps_api.create_namespaced_deployment(body=deployment, namespace='default')
@@ -653,7 +653,7 @@ def test_allow_volume_creation_with_degraded_availability_csi(
 
 @pytest.mark.csi  # NOQA
 def test_csi_minimal_volume_size(
-    client, core_api, csi_pv, pvc, pod_make): # NOQA
+    client, core_api, csi_pv, pvc, pod_make):    # NOQA
     """
     Test CSI Minimal Volume Size
 
@@ -671,13 +671,13 @@ def test_csi_minimal_volume_size(
     low_storage = str(5*Mi)
     min_storage = str(10*Mi)
 
-    pv_name = vol_name + "-pv"
+    pv_name = f"{vol_name}-pv"
     csi_pv['metadata']['name'] = pv_name
     csi_pv['spec']['csi']['volumeHandle'] = vol_name
     csi_pv['spec']['capacity']['storage'] = min_storage
     core_api.create_persistent_volume(csi_pv)
 
-    pvc_name = vol_name + "-pvc"
+    pvc_name = f"{vol_name}-pvc"
     pvc['metadata']['name'] = pvc_name
     pvc['spec']['volumeName'] = pv_name
     pvc['spec']['resources']['requests']['storage'] = low_storage
@@ -703,7 +703,7 @@ def test_csi_minimal_volume_size(
     assert claim.spec.resources.requests['storage'] == min_storage
     assert claim.status.capacity['storage'] == min_storage
 
-    pod_name = vol_name + '-pod'
+    pod_name = f'{vol_name}-pod'
     pod = pod_make(name=pod_name)
     pod['spec']['volumes'] = [create_pvc_spec(pvc_name)]
     create_and_wait_pod(core_api, pod)

@@ -90,7 +90,7 @@ from kubernetes import client as k8sclient
 
 
 @pytest.mark.coretest   # NOQA
-def test_hosts(client):  # NOQA
+def test_hosts(client):    # NOQA
     """
     Check node name and IP
     """
@@ -99,12 +99,9 @@ def test_hosts(client):  # NOQA
         assert host.name is not None
         assert host.address is not None
 
-    host_id = []
-    for i in range(0, len(hosts)):
-        host_id.append(hosts.data[i].name)
-
+    host_id = [hosts.data[i].name for i in range(len(hosts))]
     host0_from_i = {}
-    for i in range(0, len(hosts)):
+    for _ in range(len(hosts)):
         if len(host0_from_i) == 0:
             host0_from_i = client.by_id_node(host_id[0])
         else:
@@ -115,7 +112,7 @@ def test_hosts(client):  # NOQA
 
 
 @pytest.mark.coretest   # NOQA
-def test_settings(client):  # NOQA
+def test_settings(client):    # NOQA
     """
     Check input for settings
     """
@@ -127,10 +124,7 @@ def test_settings(client):  # NOQA
                      common.SETTING_DEFAULT_REPLICA_COUNT]
     settings = client.list_setting()
 
-    settingMap = {}
-    for setting in settings:
-        settingMap[setting.name] = setting
-
+    settingMap = {setting.name: setting for setting in settings}
     for name in setting_names:
         assert settingMap[name] is not None
         assert settingMap[name].definition.description is not None
@@ -144,12 +138,10 @@ def test_settings(client):  # NOQA
         if name == common.SETTING_STORAGE_OVER_PROVISIONING_PERCENTAGE:
             with pytest.raises(Exception) as e:
                 client.update(setting, value="-100")
-            assert "with invalid "+name in \
-                   str(e.value)
+            assert f"with invalid {name}" in str(e.value)
             with pytest.raises(Exception) as e:
                 client.update(setting, value="testvalue")
-            assert "with invalid "+name in \
-                   str(e.value)
+            assert f"with invalid {name}" in str(e.value)
             setting = client.update(setting, value="200")
             assert setting.value == "200"
             setting = client.by_id_setting(name)
@@ -157,16 +149,13 @@ def test_settings(client):  # NOQA
         elif name == common.SETTING_STORAGE_MINIMAL_AVAILABLE_PERCENTAGE:
             with pytest.raises(Exception) as e:
                 client.update(setting, value="300")
-            assert "with invalid "+name in \
-                   str(e.value)
+            assert f"with invalid {name}" in str(e.value)
             with pytest.raises(Exception) as e:
                 client.update(setting, value="-30")
-            assert "with invalid "+name in \
-                   str(e.value)
+            assert f"with invalid {name}" in str(e.value)
             with pytest.raises(Exception) as e:
                 client.update(setting, value="testvalue")
-            assert "with invalid "+name in \
-                   str(e.value)
+            assert f"with invalid {name}" in str(e.value)
             setting = client.update(setting, value="30")
             assert setting.value == "30"
             setting = client.by_id_setting(name)
@@ -174,8 +163,7 @@ def test_settings(client):  # NOQA
         elif name == common.SETTING_BACKUP_TARGET:
             with pytest.raises(Exception) as e:
                 client.update(setting, value="testvalue$test")
-            assert "with invalid "+name in \
-                   str(e.value)
+            assert f"with invalid {name}" in str(e.value)
             setting = client.update(setting, value="nfs://test")
             assert setting.value == "nfs://test"
             setting = client.by_id_setting(name)
@@ -188,16 +176,13 @@ def test_settings(client):  # NOQA
         elif name == common.SETTING_DEFAULT_REPLICA_COUNT:
             with pytest.raises(Exception) as e:
                 client.update(setting, value="-1")
-            assert "with invalid "+name in \
-                   str(e.value)
+            assert f"with invalid {name}" in str(e.value)
             with pytest.raises(Exception) as e:
                 client.update(setting, value="testvalue")
-            assert "with invalid "+name in \
-                   str(e.value)
+            assert f"with invalid {name}" in str(e.value)
             with pytest.raises(Exception) as e:
                 client.update(setting, value="21")
-            assert "with invalid "+name in \
-                   str(e.value)
+            assert f"with invalid {name}" in str(e.value)
             setting = client.update(setting, value="2")
             assert setting.value == "2"
             setting = client.by_id_setting(name)
@@ -456,10 +441,7 @@ def snapshot_test(client, volume_name, backing_image):  # NOQA
     check_volume_data(volume, snap2_data)
 
     snapshots = volume.snapshotList(volume=volume_name)
-    snapMap = {}
-    for snap in snapshots:
-        snapMap[snap.name] = snap
-
+    snapMap = {snap.name: snap for snap in snapshots}
     assert snapMap[snap1.name].name == snap1.name
     assert snapMap[snap1.name].removed is False
     assert snapMap[snap2.name].name == snap2.name
@@ -480,9 +462,7 @@ def snapshot_test(client, volume_name, backing_image):  # NOQA
                                      snap3.name)
 
     snapshots = volume.snapshotList(volume=volume_name)
-    snapMap = {}
-    for snap in snapshots:
-        snapMap[snap.name] = snap
+    snapMap = {snap.name: snap for snap in snapshots}
     assert snap1.name not in snapMap
     assert snap3.name not in snapMap
 
@@ -690,7 +670,7 @@ def test_backup_block_deletion(set_random_backupstore, client, core_api, volume_
     delete_backup_volume(client, volume_name)
 
 
-def test_dr_volume_with_backup_block_deletion(set_random_backupstore, client, core_api, volume_name):  # NOQA
+def test_dr_volume_with_backup_block_deletion(set_random_backupstore, client, core_api, volume_name):    # NOQA
     """
     Test DR volume last backup after block deletion.
 
@@ -745,7 +725,7 @@ def test_dr_volume_with_backup_block_deletion(set_random_backupstore, client, co
                                                                volume_name)
     assert backup_blocks_count == 3
 
-    dr_vol_name = "dr-" + volume_name
+    dr_vol_name = f"dr-{volume_name}"
     client.create_volume(name=dr_vol_name, size=SIZE,
                          numberOfReplicas=2, fromBackup=backup1.url,
                          frontend="", standby=True)
@@ -780,7 +760,7 @@ def test_dr_volume_with_backup_block_deletion(set_random_backupstore, client, co
     check_volume_data(dr_vol, final_data, False)
 
 
-def test_dr_volume_with_backup_block_deletion_abort_during_backup_in_progress(set_random_backupstore, client, core_api, volume_name):  # NOQA
+def test_dr_volume_with_backup_block_deletion_abort_during_backup_in_progress(set_random_backupstore, client, core_api, volume_name):    # NOQA
     """
     Test DR volume last backup after block deletion aborted. This will set the
     last backup to be empty.
@@ -841,7 +821,7 @@ def test_dr_volume_with_backup_block_deletion_abort_during_backup_in_progress(se
                                                                volume_name)
     assert backup_blocks_count == 3
 
-    dr_vol_name = "dr-" + volume_name
+    dr_vol_name = f"dr-{volume_name}"
     client.create_volume(name=dr_vol_name, size=SIZE,
                          numberOfReplicas=2, fromBackup=backup1.url,
                          frontend="", standby=True)
@@ -877,7 +857,7 @@ def test_dr_volume_with_backup_block_deletion_abort_during_backup_in_progress(se
     check_volume_data(dr_vol, final_data, False)
 
 
-def test_dr_volume_with_all_backup_blocks_deleted(set_random_backupstore, client, core_api, volume_name):  # NOQA
+def test_dr_volume_with_all_backup_blocks_deleted(set_random_backupstore, client, core_api, volume_name):    # NOQA
     """
     Test DR volume can be activate after delete all backups.
 
@@ -916,7 +896,7 @@ def test_dr_volume_with_all_backup_blocks_deleted(set_random_backupstore, client
                                                                volume_name)
     assert backup_blocks_count == 2
 
-    dr_vol_name = "dr-" + volume_name
+    dr_vol_name = f"dr-{volume_name}"
     client.create_volume(name=dr_vol_name, size=SIZE,
                          numberOfReplicas=2, fromBackup=backup0.url,
                          frontend="", standby=True)
@@ -936,7 +916,7 @@ def test_dr_volume_with_all_backup_blocks_deleted(set_random_backupstore, client
     check_volume_data(dr_vol, data0, False)
 
 
-def test_backup_volume_list(set_random_backupstore, client, core_api):  # NOQA
+def test_backup_volume_list(set_random_backupstore, client, core_api):    # NOQA
     """
     Test backup volume list
     Context:
@@ -1003,22 +983,20 @@ def test_backup_volume_list(set_random_backupstore, client, core_api):  # NOQA
     verify_no_err()
 
     # place a bad named file into the backups folder of volume(1)
-    prefix = \
-        backupstore_get_backup_volume_prefix(client, volume1_name) + "/backups"
-    backupstore_create_file(client,
-                            core_api,
-                            prefix + "/backup_1234@failure.cfg")
+    prefix = (
+        f"{backupstore_get_backup_volume_prefix(client, volume1_name)}/backups"
+    )
+
+    backupstore_create_file(client, core_api, f"{prefix}/backup_1234@failure.cfg")
 
     verify_no_err()
 
-    backupstore_delete_file(client,
-                            core_api,
-                            prefix + "/backup_1234@failure.cfg")
+    backupstore_delete_file(client, core_api, f"{prefix}/backup_1234@failure.cfg")
 
     backupstore_cleanup(client)
 
 
-def test_backup_metadata_deletion(set_random_backupstore, client, core_api, volume_name):  # NOQA
+def test_backup_metadata_deletion(set_random_backupstore, client, core_api, volume_name):    # NOQA
     """
     Test backup metadata deletion
 
@@ -1056,8 +1034,8 @@ def test_backup_metadata_deletion(set_random_backupstore, client, core_api, volu
     """
     backupstore_cleanup(client)
 
-    volume1_name = volume_name + "-1"
-    volume2_name = volume_name + "-2"
+    volume1_name = f"{volume_name}-1"
+    volume2_name = f"{volume_name}-2"
 
     host_id = get_self_host_id()
 
@@ -1075,7 +1053,7 @@ def test_backup_metadata_deletion(set_random_backupstore, client, core_api, volu
     _, v1b2, _, _ = create_backup(client, volume1_name)
     _, v2b2, _, _ = create_backup(client, volume2_name)
 
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         found1 = found2 = found3 = found4 = False
 
         bvs = client.list_backupVolume()
@@ -1107,7 +1085,7 @@ def test_backup_metadata_deletion(set_random_backupstore, client, core_api, volu
     delete_backup(client, volume1_name, v1b1.name)
     delete_backup(client, volume2_name, v2b1.name)
 
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         found1 = found2 = found3 = found4 = False
 
         bvs = client.list_backupVolume()
@@ -1138,7 +1116,7 @@ def test_backup_metadata_deletion(set_random_backupstore, client, core_api, volu
     assert len(v2bv.backupList()) == 0
 
     delete_backup_volume(client, v2bv.name)
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         if backupstore_count_backup_block_files(client,
                                                 core_api,
                                                 volume2_name) == 0:
@@ -1148,7 +1126,7 @@ def test_backup_metadata_deletion(set_random_backupstore, client, core_api, volu
                                                 core_api,
                                                 volume2_name) == 0
 
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         bvs = client.list_backupVolume()
 
         found1 = found2 = found3 = found4 = False
@@ -1173,7 +1151,7 @@ def test_backup_metadata_deletion(set_random_backupstore, client, core_api, volu
     assert v1b2_new.messages == v1b2.messages is None
 
     delete_backup(client, volume1_name, v1b2.name)
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         if backupstore_count_backup_block_files(client,
                                                 core_api,
                                                 volume1_name) == 0:
@@ -1182,7 +1160,7 @@ def test_backup_metadata_deletion(set_random_backupstore, client, core_api, volu
                                                 core_api,
                                                 volume1_name) == 0
 
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         found1 = found2 = found3 = found4 = False
 
         bvs = client.list_backupVolume()

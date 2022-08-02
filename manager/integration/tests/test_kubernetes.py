@@ -53,13 +53,9 @@ def delete_and_wait_statefulset_only(api, ss):
     except ApiException as e:
         assert e.status == 404
 
-    for i in range(RETRY_COUNTS):
+    for _ in range(RETRY_COUNTS):
         ret = apps_api.list_namespaced_stateful_set(namespace='default')
-        found = False
-        for item in ret.items:
-            if item.metadata.name == ss['metadata']['name']:
-                found = True
-                break
+        found = any(item.metadata.name == ss['metadata']['name'] for item in ret.items)
         if not found:
             break
         time.sleep(RETRY_INTERVAL)
@@ -106,7 +102,7 @@ def provision_and_wait_pv(client, core_api, storage_class, pvc): # NOQA
 
 @pytest.mark.csi  # NOQA
 def test_kubernetes_status(client, core_api, storage_class,  # NOQA
-                           statefulset, csi_pv, pvc, pod):  # NOQA
+                           statefulset, csi_pv, pvc, pod):    # NOQA
     """
     Test Volume feature: Kubernetes Status
 
@@ -151,7 +147,7 @@ def test_kubernetes_status(client, core_api, storage_class,  # NOQA
     pod_info = get_statefulset_pod_info(core_api, statefulset)
     volume_info = [p['pv_name'] for p in pod_info]
 
-    extra_pod_name = 'extra-pod-using-' + volume_info[1]
+    extra_pod_name = f'extra-pod-using-{volume_info[1]}'
     pod['metadata']['name'] = extra_pod_name
     p2 = core_api.read_namespaced_pod(name=pod_info[1]['pod_name'],
                                       namespace='default')
@@ -188,7 +184,7 @@ def test_kubernetes_status(client, core_api, storage_class,  # NOQA
             k_status = volume.kubernetesStatus
             workloads = k_status.workloadsStatus
             assert workloads[0].podStatus == 'Running'
-        if i == 1:
+        elif i == 1:
             assert len(k_status.workloadsStatus) == 2
             if workloads[0].podName == pod_info[i]['pod_name']:
                 assert workloads[1].podName == extra_pod_name
@@ -235,7 +231,7 @@ def test_kubernetes_status(client, core_api, storage_class,  # NOQA
                     'workloadType': 'StatefulSet',
                 },
             ]
-        if i == 1:
+        elif i == 1:
             ks_list[i]['lastPodRefAt'] = ''
             ks_list[i]['workloadsStatus'] = [
                 {
@@ -324,7 +320,7 @@ def test_kubernetes_status(client, core_api, storage_class,  # NOQA
 
 
 @pytest.mark.csi  # NOQA
-def test_pv_creation(client, core_api):  # NOQA
+def test_pv_creation(client, core_api):    # NOQA
     """
     Test creating PV using Longhorn API
 
@@ -338,11 +334,11 @@ def test_pv_creation(client, core_api):  # NOQA
                          numberOfReplicas=2)
     volume = wait_for_volume_detached(client, volume_name)
 
-    pv_name = "pv-" + volume_name
+    pv_name = f"pv-{volume_name}"
     create_pv_for_volume(client, core_api, volume, pv_name)
 
     # try to create one more pv for the volume
-    pv_name_2 = "pv2-" + volume_name
+    pv_name_2 = f"pv2-{volume_name}"
     with pytest.raises(Exception) as e:
         volume.pvCreate(pvName=pv_name_2)
         assert "already exist" in str(e.value)
@@ -362,7 +358,7 @@ def test_pv_creation(client, core_api):  # NOQA
 
 @pytest.mark.csi  # NOQA
 def test_pvc_creation_with_default_sc_set(
-        client, core_api, storage_class, pod):  # NOQA
+        client, core_api, storage_class, pod):    # NOQA
     """
     Test creating PVC with default StorageClass set
 
@@ -399,14 +395,14 @@ def test_pvc_creation_with_default_sc_set(
     assert setting.value == static_sc_name
 
     volume_name = "test-pvc-creation-with-sc" # NOQA
-    pod_name = "pod-" + volume_name
+    pod_name = f"pod-{volume_name}"
     client.create_volume(name=volume_name, size=SIZE,
                          numberOfReplicas=2)
     volume = wait_for_volume_detached(client, volume_name)
 
-    pv_name = "pv-" + volume_name
-    pvc_name = "pvc-" + volume_name
-    pvc_name_extra = "pvc-" + volume_name + "-extra"
+    pv_name = f"pv-{volume_name}"
+    pvc_name = f"pvc-{volume_name}"
+    pvc_name_extra = f"pvc-{volume_name}-extra"
 
     create_pv_for_volume(client, core_api, volume, pv_name)
     create_pvc_for_volume(client, core_api, volume, pvc_name)

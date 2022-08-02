@@ -54,7 +54,7 @@ def create_and_test_backups(api, cli, pod_info):
 
         # Wait for backup to appear.
         found = False
-        for i in range(DEFAULT_BACKUP_TIMEOUT):
+        for _ in range(DEFAULT_BACKUP_TIMEOUT):
             backup_volumes = cli.list_backupVolume()
             for bv in backup_volumes:
                 if bv.name == pod['pv_name']:
@@ -66,7 +66,7 @@ def create_and_test_backups(api, cli, pod_info):
         assert found
 
         found = False
-        for i in range(DEFAULT_BACKUP_TIMEOUT):
+        for _ in range(DEFAULT_BACKUP_TIMEOUT):
             backups = bv.backupList().data
             for b in backups:
                 if b['snapshotName'] == pod['backup_snapshot']['name']:
@@ -131,7 +131,7 @@ def test_statefulset_mount(client, core_api, storage_class, statefulset):  # NOQ
 
 
 @pytest.mark.coretest   # NOQA
-def test_statefulset_scaling(client, core_api, storage_class, statefulset):  # NOQA
+def test_statefulset_scaling(client, core_api, storage_class, statefulset):    # NOQA
     """
     Test that scaling up a StatefulSet successfully provisions new volumes.
 
@@ -178,7 +178,7 @@ def test_statefulset_scaling(client, core_api, storage_class, statefulset):  # N
                 'replicas': replicas
             }
         })
-    for i in range(DEFAULT_POD_TIMEOUT):
+    for _ in range(DEFAULT_POD_TIMEOUT):
         s_set = apps_api.read_namespaced_stateful_set(
             name=statefulset_name,
             namespace='default')
@@ -209,7 +209,7 @@ def test_statefulset_scaling(client, core_api, storage_class, statefulset):  # N
 
 
 @pytest.mark.csi  # NOQA
-def test_statefulset_pod_deletion(core_api, storage_class, statefulset):  # NOQA
+def test_statefulset_pod_deletion(core_api, storage_class, statefulset):    # NOQA
     """
     Test that a StatefulSet can spin up a new Pod with the same data after a
     previous Pod has been deleted.
@@ -224,8 +224,10 @@ def test_statefulset_pod_deletion(core_api, storage_class, statefulset):  # NOQA
 
     statefulset_name = 'statefulset-pod-deletion-test'
     update_statefulset_manifests(statefulset, storage_class, statefulset_name)
-    test_pod_name = statefulset_name + '-' + \
-        str(randrange(statefulset['spec']['replicas']))
+    test_pod_name = f'{statefulset_name}-' + str(
+        randrange(statefulset['spec']['replicas'])
+    )
+
     test_data = generate_random_data(VOLUME_RWTEST_SIZE)
 
     create_storage_class(storage_class)
@@ -272,7 +274,7 @@ def test_statefulset_backup(set_random_backupstore, client, core_api, storage_cl
 
 
 @pytest.mark.recurring_job  # NOQA
-def test_statefulset_recurring_backup(set_random_backupstore, client, core_api, storage_class, statefulset):  # NOQA
+def test_statefulset_recurring_backup(set_random_backupstore, client, core_api, storage_class, statefulset):    # NOQA
     """
     Scenario : test recurring backups on StatefulSets
 
@@ -325,11 +327,7 @@ def test_statefulset_recurring_backup(set_random_backupstore, client, core_api, 
     for pod in pod_data:
         volume = client.by_id_volume(pod['pv_name'])
         snapshots = volume.snapshotList()
-        count = 0
-        for snapshot in snapshots:
-            if snapshot.removed is False:
-                count += 1
-
+        count = sum(snapshot.removed is False for snapshot in snapshots)
         # one backup + volume-head
         assert count == 2
 

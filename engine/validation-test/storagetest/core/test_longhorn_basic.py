@@ -11,20 +11,22 @@ REPLICA = "replica"
 
 
 def test_container_with_volume_execute(client, test_name):
-    volume_name = 'vol' + test_name
+    volume_name = f'vol{test_name}'
     cleanup_items = []
     cleanup_vols = []
     try:
         c = client.create_container(
-                name=test_name,
-                imageUuid=TEST_IMAGE_UUID,
-                networkMode=MANAGED_NETWORK,
-                dataVolumes=[volume_name + ":/vol"],
-                volumeDriver=VOLUME_DRIVER,
-                attachStdin=True,
-                attachStdout=True,
-                tty=True,
-                command='/bin/bash')
+            name=test_name,
+            imageUuid=TEST_IMAGE_UUID,
+            networkMode=MANAGED_NETWORK,
+            dataVolumes=[f"{volume_name}:/vol"],
+            volumeDriver=VOLUME_DRIVER,
+            attachStdin=True,
+            attachStdout=True,
+            tty=True,
+            command='/bin/bash',
+        )
+
         cleanup_items.append(c)
         container = client.wait_success(c, timeout=120)
 
@@ -45,7 +47,7 @@ def test_container_with_volume_execute(client, test_name):
 
 
 def test_container_migrate_volume(client, test_name):
-    volume_name = 'vol' + test_name
+    volume_name = f'vol{test_name}'
 
     hosts = client.list_host(kind='docker', removed_null=True)
     assert len(hosts) > 2
@@ -55,16 +57,18 @@ def test_container_migrate_volume(client, test_name):
     cleanup_vols = []
     try:
         c1 = client.create_container(
-                name=test_name,
-                imageUuid=TEST_IMAGE_UUID,
-                networkMode=MANAGED_NETWORK,
-                dataVolumes=[volume_name + ":/vol"],
-                volumeDriver=VOLUME_DRIVER,
-                requestedHostId=hosts[0].id,
-                attachStdin=True,
-                attachStdout=True,
-                tty=True,
-                command='/bin/bash')
+            name=test_name,
+            imageUuid=TEST_IMAGE_UUID,
+            networkMode=MANAGED_NETWORK,
+            dataVolumes=[f"{volume_name}:/vol"],
+            volumeDriver=VOLUME_DRIVER,
+            requestedHostId=hosts[0].id,
+            attachStdin=True,
+            attachStdout=True,
+            tty=True,
+            command='/bin/bash',
+        )
+
         cleanup_items.append(c1)
         container = client.wait_success(c1, timeout=120)
 
@@ -78,16 +82,18 @@ def test_container_migrate_volume(client, test_name):
         cleanup_items.remove(c1)
 
         c2 = client.create_container(
-                name=test_name + "-2",
-                imageUuid=TEST_IMAGE_UUID,
-                networkMode=MANAGED_NETWORK,
-                dataVolumes=[volume_name + ":/vol"],
-                volumeDriver=VOLUME_DRIVER,
-                requestedHostId=hosts[1].id,
-                attachStdin=True,
-                attachStdout=True,
-                tty=True,
-                command='/bin/bash')
+            name=f"{test_name}-2",
+            imageUuid=TEST_IMAGE_UUID,
+            networkMode=MANAGED_NETWORK,
+            dataVolumes=[f"{volume_name}:/vol"],
+            volumeDriver=VOLUME_DRIVER,
+            requestedHostId=hosts[1].id,
+            attachStdin=True,
+            attachStdout=True,
+            tty=True,
+            command='/bin/bash',
+        )
+
         cleanup_items.append(c2)
         container = client.wait_success(c2, timeout=180)
 
@@ -104,20 +110,22 @@ def test_container_migrate_volume(client, test_name):
 
 
 def test_container_replica_down(admin_client, client, test_name):
-    volume_name = 'vol' + test_name
+    volume_name = f'vol{test_name}'
     cleanup_items = []
     cleanup_vols = []
     try:
         c = client.create_container(
-                name=test_name,
-                imageUuid=TEST_IMAGE_UUID,
-                networkMode=MANAGED_NETWORK,
-                dataVolumes=[volume_name + ":/vol"],
-                volumeDriver=VOLUME_DRIVER,
-                attachStdin=True,
-                attachStdout=True,
-                tty=True,
-                command='/bin/bash')
+            name=test_name,
+            imageUuid=TEST_IMAGE_UUID,
+            networkMode=MANAGED_NETWORK,
+            dataVolumes=[f"{volume_name}:/vol"],
+            volumeDriver=VOLUME_DRIVER,
+            attachStdin=True,
+            attachStdout=True,
+            tty=True,
+            command='/bin/bash',
+        )
+
         cleanup_items.append(c)
         container = client.wait_success(c, timeout=120)
 
@@ -140,7 +148,7 @@ def test_container_replica_down(admin_client, client, test_name):
         test_msg = 'EXEC_WORKS_AFTER_REMOVE'
         assert_execute(container, test_msg)
 
-        # TODO implement check of volume status, wait it to be UP
+            # TODO implement check of volume status, wait it to be UP
 
     finally:
         delete_all(client, cleanup_items)
@@ -236,14 +244,14 @@ def test_container_both_replica_down_and_rebuild(
 
 
 def assert_execute(container, test_msg):
-    execute = container.execute(attachStdin=True,
-                                attachStdout=True,
-                                command=['/bin/bash', '-c',
-                                         'echo ' + test_msg +
-                                         ' | tee /vol/test'],
-                                tty=True)
-    conn = ws.create_connection(execute.url + '?token=' + execute.token,
-                                timeout=10)
+    execute = container.execute(
+        attachStdin=True,
+        attachStdout=True,
+        command=['/bin/bash', '-c', (f'echo {test_msg}' + ' | tee /vol/test')],
+        tty=True,
+    )
+
+    conn = ws.create_connection(f'{execute.url}?token={execute.token}', timeout=10)
 
     # Python is weird about closures
     closure_wrapper = {
@@ -255,8 +263,7 @@ def assert_execute(container, test_msg):
         closure_wrapper['result'] += base64.b64decode(msg)
         return test_msg == closure_wrapper['result'].rstrip()
 
-    wait_for(exec_check,
-             'Timeout waiting for exec msg %s' % test_msg)
+    wait_for(exec_check, f'Timeout waiting for exec msg {test_msg}')
 
 
 def assert_read(container, test_msg):
@@ -265,8 +272,7 @@ def assert_read(container, test_msg):
                                 command=['/bin/bash', '-c',
                                          'cat /vol/test'],
                                 tty=True)
-    conn = ws.create_connection(execute.url + '?token=' + execute.token,
-                                timeout=10)
+    conn = ws.create_connection(f'{execute.url}?token={execute.token}', timeout=10)
 
     # Python is weird about closures
     closure_wrapper = {
@@ -278,8 +284,7 @@ def assert_read(container, test_msg):
         closure_wrapper['result'] += base64.b64decode(msg)
         return test_msg == closure_wrapper['result'].rstrip()
 
-    wait_for(exec_check,
-             'Timeout waiting for exec msg %s' % test_msg)
+    wait_for(exec_check, f'Timeout waiting for exec msg {test_msg}')
 
 
 def get_system_stack_name(volume_name):

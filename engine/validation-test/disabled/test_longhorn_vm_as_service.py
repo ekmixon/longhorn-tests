@@ -219,9 +219,12 @@ def test_createVM_with_root_and_data_on_longhorn_ha(super_client, client):
         vm = client.wait_success(client.delete(vm))
         assert vm.state == 'removed'
         wait_for_condition(
-            super_client, vm,
+            super_client,
+            vm,
             lambda x: x.state == "purged",
-            lambda x: 'State is: ' + x.state)
+            lambda x: f'State is: {x.state}',
+        )
+
 
         # Wait for VM to be recreated
         wait_for_vm_scale_to_adjust(super_client, service)
